@@ -24,7 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 # ==============================
 # Set your PostgreSQL connection string from Render
 # Example: postgres://user:password@host:5432/agro_forecast_db
-DATABASE_URL = os.getenv("DATABASE_URL", "postgres://<USER>:<PASSWORD>@<HOST>:5432/agro_forecast_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://agro_vista_forecast_db_user:SF01pXR4eSoMHHxI2db7GezQvphdddWq@dpg-d435d2uuk2gs738oc6i0-a/agro_vista_forecast_db")
 
 # Folder where your Excel forecast files are located
 FORECAST_FOLDER = "forecasts"
