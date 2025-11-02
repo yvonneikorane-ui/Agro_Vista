@@ -1,111 +1,88 @@
-"""
-UPLOAD FORECAST EXCEL FILES TO POSTGRESQL DATABASE
---------------------------------------------------
-This script automates the transition from using Google Sheets/Excel 
-to using PostgreSQL for your AgroVista Forecast Intelligence platform.
-
-✅ What it does:
-1. Reads all Excel files from the /forecasts directory.
-2. Loads each sheet as a DataFrame.
-3. Creates or replaces tables in PostgreSQL automatically.
-4. Prints upload logs for transparency.
-"""
-
-# ==============================
-# IMPORTS
-# ==============================
-import os
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 import pandas as pd
 from sqlalchemy import create_engine
-from sqlalchemy.exc import SQLAlchemyError
 
-# ==============================
-# CONFIGURATION
-# ==============================
-# Set your PostgreSQL connection string from Render
-# Example: postgres://user:password@host:5432/agro_forecast_db
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://agro_vista_forecast_db_user:SF01pXR4eSoMHHxI2db7GezQvphdddWq@dpg-d435d2uuk2gs738oc6i0-a.oregon-postgres.render.com/agro_vista_forecast_db")
+# -----------------------------------------------------------
+# 1️⃣ Flask app setup
+# -----------------------------------------------------------
+app = Flask(__name__)
+CORS(app)
 
-# Folder where your Excel forecast files are located
-FORECAST_FOLDER = "forecasts"
+# -----------------------------------------------------------
+# 2️⃣ PostgreSQL connection
+# -----------------------------------------------------------
+# Replace with your actual Render EXTERNAL DB URL + ?sslmode=require
+DB_URL = "postgresql://agro_vista_forecast_db_user:SF01pXR4eSoMHHxI2db7GezQvphdddWq@dpg-d435d2uuk2gs738oc6i0-a.oregon-postgres.render.com/agro_vista_forecast_db"
+engine = create_engine(DB_URL)
 
-# ==============================
-# FUNCTION: Upload a single Excel file
-# ==============================
-def upload_excel_to_postgres(file_path, engine):
-    """
-    Reads all sheets from an Excel file and uploads them to PostgreSQL.
-    Each sheet becomes its own table.
-    """
+# -----------------------------------------------------------
+# 3️⃣ Define your forecast sheet names
+# -----------------------------------------------------------
+sheet_names = [
+    "youth_women_empowerment_forecast",
+    "Tractor_Registry_forecast",
+    "National_Agro_Farmer_Mapping_Forecast",
+    "Stakeholders_Partners_Forecast",
+    "Knowledge_Innocvation_Tracker_Forecast",
+    "Project_Overview_Forecast",
+    "E_Voucher_Forecast",
+    "Farmers_Registry_Forecast",
+    "Investment_KPIs_Forecast",
+    "Policy_Simulator_Forecast",
+    "Rainified_Crops_Forecast",
+    "Climate_Carbon_Credits_Forecast",
+    "Yield_Food_Security_Forecast",
+    "Input_Pest_Disease_Alert_Forecast"
+]
+
+# -----------------------------------------------------------
+# 4️⃣ Load all tables dynamically from PostgreSQL
+# -----------------------------------------------------------
+def load_all_sheets():
+    """Loads all forecast tables from PostgreSQL and combines them"""
+    dfs = []
+    for s in sheet_names:
+        try:
+            df = pd.read_sql_table(s.lower(), engine)
+            df["Source_Sheet"] = s
+            dfs.append(df)
+        except Exception as e:
+            print(f"⚠️ Error loading {s}: {e}")
+    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+# -----------------------------------------------------------
+# 5️⃣ API endpoints
+# -----------------------------------------------------------
+@app.route('/')
+def home():
+    return jsonify({
+        "message": "🌾 AgroVista API is running successfully!",
+        "endpoints": ["/api/all_forecasts", "/api/forecast?sheet=<sheet_name>"]
+    })
+
+@app.route('/api/all_forecasts', methods=['GET'])
+def get_all_forecasts():
+    """Return combined data from all tables"""
+    df = load_all_sheets()
+    if df.empty:
+        return jsonify({"error": "No data found or unable to connect to PostgreSQL"}), 500
+    return df.to_json(orient="records")
+
+@app.route('/api/forecast', methods=['GET'])
+def get_forecast_by_sheet():
+    """Return forecast data for one sheet"""
+    sheet = request.args.get("sheet")
+    if not sheet:
+        return jsonify({"error": "Please specify a sheet name"}), 400
     try:
-        # Extract filename (without extension) for table naming
-        file_name = os.path.basename(file_path).replace(".xlsx", "").replace(".xls", "")
-
-        print(f"📘 Processing file: {file_name}")
-
-        # Load all sheets in the Excel file
-        excel_data = pd.read_excel(file_path, sheet_name=None)
-
-        # Loop through each sheet
-        for sheet_name, df in excel_data.items():
-            if df.empty:
-                print(f"⚠️ Skipping empty sheet: {sheet_name}")
-                continue
-
-            # Clean up column names (avoid spaces or invalid SQL chars)
-            df.columns = [c.strip().replace(" ", "_").replace("-", "_").lower() for c in df.columns]
-
-            # Construct table name
-            table_name = f"{file_name}_{sheet_name}".lower().replace(" ", "_")
-
-            print(f"   ⏳ Uploading sheet '{sheet_name}' → table '{table_name}' ...")
-
-            # Upload to PostgreSQL (replace old data)
-            df.to_sql(table_name, engine, if_exists="replace", index=False)
-
-            print(f"   ✅ Successfully uploaded: {table_name} ({len(df)} rows)")
-
-    except SQLAlchemyError as e:
-        print(f"❌ Database error: {str(e)}")
+        df = pd.read_sql_table(sheet.lower(), engine)
+        return df.to_json(orient="records")
     except Exception as e:
-        print(f"❌ Error processing file {file_path}: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
-# ==============================
-# MAIN FUNCTION
-# ==============================
-def main():
-    """Main upload runner"""
-    print("🚀 Starting bulk forecast upload to PostgreSQL...")
-
-    # Check folder existence
-    if not os.path.exists(FORECAST_FOLDER):
-        print(f"❌ Folder '{FORECAST_FOLDER}' not found. Please create it and add your forecast Excel files.")
-        return
-
-    # Create DB connection
-    try:
-        engine = create_engine(DATABASE_URL)
-        with engine.connect() as conn:
-            print("✅ Connected to PostgreSQL successfully!")
-    except Exception as e:
-        print(f"❌ Failed to connect to PostgreSQL: {e}")
-        return
-
-    # Loop through all Excel files in the forecast folder
-    files = [f for f in os.listdir(FORECAST_FOLDER) if f.endswith((".xlsx", ".xls"))]
-
-    if not files:
-        print(f"⚠️ No Excel files found in '{FORECAST_FOLDER}' directory.")
-        return
-
-    for file in files:
-        file_path = os.path.join(FORECAST_FOLDER, file)
-        upload_excel_to_postgres(file_path, engine)
-
-    print("\n🎯 ALL FORECASTS UPLOADED SUCCESSFULLY TO POSTGRESQL 🎯")
-
-# ==============================
-# EXECUTION
-# ==============================
-if __name__ == "__main__":
-    main()
+# -----------------------------------------------------------
+# 6️⃣ Main app runner
+# -----------------------------------------------------------
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
