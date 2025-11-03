@@ -1,6 +1,6 @@
 # app.py
 """
-AgroVista Flask app (production-ready)
+Agro_Vista Flask app (production-ready)
 - Reads tables from PostgreSQL using DATABASE_URL env var
 - Falls back to Google Sheets if DB empty (optional)
 - Serves a simple HTML UI at / (mobile responsive)
