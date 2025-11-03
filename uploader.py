@@ -1,52 +1,44 @@
 # uploader.py
-"""
-Upload all Excel / CSV forecast files in ./forecasts to PostgreSQL.
-Run locally, or in Colab (install dependencies there).
-"""
 import os
 import pandas as pd
 from sqlalchemy import create_engine
-from sqlalchemy.exc import SQLAlchemyError
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:pass@host:5432/dbname")
-FORECAST_FOLDER = "forecasts"
+# === DATABASE URL ===
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    # fallback for local testing
+    DATABASE_URL = "postgresql://user:password@host:5432/dbname"
 
-def upload_file_to_db(filepath, engine):
-    filename = os.path.basename(filepath)
-    name_noext = os.path.splitext(filename)[0].lower().replace(" ", "_")
-    if filename.lower().endswith(".csv"):
-        df = pd.read_csv(filepath)
+# === FOLDER PATH ===
+FORECAST_FOLDER = os.path.join(os.path.dirname(__file__), "forecasts")
+
+def upload_csv_to_postgres(file_path, engine):
+    file_name = os.path.basename(file_path).replace(".csv", "")
+    print(f"📘 Uploading {file_name}...")
+    try:
+        df = pd.read_csv(file_path)
         df.columns = [c.strip().replace(" ", "_").lower() for c in df.columns]
-        table_name = name_noext
-        df.to_sql(table_name, engine, if_exists="replace", index=False)
-        print(f"Uploaded CSV {filename} -> {table_name} ({len(df)} rows)")
-    else:
-        # Excel: upload each sheet as a table
-        xls = pd.read_excel(filepath, sheet_name=None)
-        for sheet_name, df in xls.items():
-            if df.empty:
-                print(f"Skipping empty sheet {sheet_name} in {filename}")
-                continue
-            df.columns = [c.strip().replace(" ", "_").lower() for c in df.columns]
-            table_name = f"{name_noext}_{sheet_name.strip().lower().replace(' ','_')}"
-            df.to_sql(table_name, engine, if_exists="replace", index=False)
-            print(f"Uploaded sheet {sheet_name} -> {table_name} ({len(df)} rows)")
+        df.to_sql(file_name.lower(), engine, if_exists="replace", index=False)
+        print(f"✅ Uploaded {file_name} ({len(df)} rows)")
+    except Exception as e:
+        print(f"❌ Failed to upload {file_name}: {e}")
 
 def main():
     if not os.path.exists(FORECAST_FOLDER):
-        print(f"Folder '{FORECAST_FOLDER}' not found. Create it and add files.")
+        print(f"❌ Folder not found: {FORECAST_FOLDER}")
         return
-    engine = create_engine(DATABASE_URL)
-    files = [f for f in os.listdir(FORECAST_FOLDER) if f.lower().endswith((".xlsx", ".xls", ".csv"))]
+
+    files = [f for f in os.listdir(FORECAST_FOLDER) if f.endswith(".csv")]
     if not files:
-        print("No forecast files found.")
+        print("⚠️ No CSV files found in forecasts/")
         return
-    for f in files:
-        path = os.path.join(FORECAST_FOLDER, f)
-        try:
-            upload_file_to_db(path, engine)
-        except Exception as e:
-            print(f"Error uploading {f}: {e}")
+
+    engine = create_engine(DATABASE_URL)
+    for file in files:
+        upload_csv_to_postgres(os.path.join(FORECAST_FOLDER, file), engine)
+
+    print("\n🎯 ALL FORECAST FILES UPLOADED SUCCESSFULLY")
 
 if __name__ == "__main__":
     main()
+
