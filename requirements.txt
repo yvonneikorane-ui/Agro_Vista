@@ -1,7 +1,11 @@
-Flask==3.0.3
-pandas==2.2.3
-SQLAlchemy==2.0.23
-psycopg2-binary==2.9.9
+Flask==2.3.2
 gunicorn==23.0.0
 google-generativeai
 plotly==5.15.0
+gunicorn==21.2.0
+pandas==2.2.2
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+requests==2.31.0
+python-dotenv==1.0.1
+openpyxl==3.1.2
