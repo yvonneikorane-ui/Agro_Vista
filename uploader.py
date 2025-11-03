@@ -40,7 +40,7 @@ def main():
         print("Create 'forecasts/' folder and place Excel files there")
         return
     engine = create_engine(DATABASE_URL)
-    files = [f for f in os.listdir(FORECAST_FOLDER) if f.lower().endswith((".xlsx", ".xls"))]
+    files = [f for f in os.listdir(FORECAST_FOLDER) if f.lower().endswith((".xlsx", ".xls", ".csv"))]
     if not files:
         print("No excel files found in forecasts/")
         return
