@@ -9,10 +9,10 @@ from flask_cors import CORS
 
 # ---------------- Config ----------------
 DATABASE_URL = os.getenv("DATABASE_URL")  # Railway Postgres URL
-GENIE_API_KEY = os.getenv("GENIE_API_KEY")  # Your Gemini API key
+GENAI_API_KEY = os.getenv("GENAI_API_KEY")  # Your Gemini API key
 SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
 
-if GENIE_API_KEY:
+if GENAI_API_KEY:
     genai.configure(api_key=GENIE_API_KEY)
 
 engine = create_engine(DATABASE_URL) if DATABASE_URL else None
@@ -131,7 +131,7 @@ def ask():
 
         # Gemini AI response
         answer = ""
-        if GENIE_API_KEY:
+        if GENAI_API_KEY:
             try:
                 model = genai.GenerativeModel("models/gemini-1.5-pro")
                 resp = model.generate_content(f"{df.head(15).to_dict(orient='records')}\nUser question: {q}")
@@ -139,7 +139,7 @@ def ask():
             except Exception as e:
                 answer = f"Gemini error: {e}"
         else:
-            answer = f"(No GENIE_API_KEY) Question received: {q}"
+            answer = f"(No GENAI_API_KEY) Question received: {q}"
 
         return jsonify({"answer": answer, "chart": chart_b64})
     except Exception as e:
