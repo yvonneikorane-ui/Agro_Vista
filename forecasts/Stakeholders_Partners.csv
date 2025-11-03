@@ -1,0 +1,21 @@
+partner_id,project_id,project_name,location,lead_org,start_date,end_date,status,funding_source,total_budget,key_goals,climate_practices
+SP001,P001,Kano Rice Expansion,Kano,Kano State Govt,2025-01-01,2026-12-31,Active,FGN Grant,200000000,Increase rice yields,Conservation Tillage
+SP002,P002,Kaduna Youth Agro,Kaduna,Kaduna AgroDev,2025-02-01,2026-06-30,Planning,World Bank,150000000,Youth employment,Organic Fertilizer
+SP003,P003,Lagos Urban Farms,Lagos,Lagos Food Board,2025-01-15,2025-12-31,Active,Private Investor,90000000,Urban food supply,Drip Irrigation
+SP004,P004,Oyo Cassava Boost,Oyo,Oyo Cassava Union,2025-03-01,2026-02-28,Pending,FGN/IFAD,120000000,Improve cassava processing,Agroforestry
+SP005,P005,Benue Maize Hub,Benue,Benue Farmers Co-op,2025-04-01,2026-03-31,Active,FGN Grant,80000000,Scale maize production,Zero Tillage
+SP006,P006,Plateau Dairy Project,Plateau,Plateau Dairy Assoc.,2025-05-15,2026-05-14,Planning,AfDB,100000000,Dairy value chain,Biogas Utilization
+SP007,P007,Rivers Fishery Dev,Rivers,Rivers Fish Farmers Union,2025-06-01,2026-06-01,Active,FGN Grant,60000000,Increase fish supply,Integrated Aquaculture
+SP008,P008,Enugu Cocoa Revival,Enugu,Enugu Cocoa Board,2025-07-01,2027-06-30,Planning,World Bank,140000000,Revive cocoa exports,Shade-Grown Cocoa
+SP009,P009,Cross River Oil Palm,Cross River,CrossRiver Palm Assoc.,2025-07-15,2026-12-31,Active,Private Investor,110000000,Expand oil palm plantations,Carbon Sequestration
+SP010,P010,Niger Millet Project,Niger,Niger Grain Board,2025-08-01,2026-07-31,Pending,IFAD,70000000,Improve millet productivity,Drought-Resistant Seeds
+SP011,P011,Borno Irrigation Dev,Borno,Borno Water Authority,2025-09-01,2027-09-01,Active,FGN Grant,130000000,Irrigation expansion,Efficient Water Use
+SP012,P012,Ekiti Cassava Chips,Ekiti,Ekiti Agro Export Board,2025-09-15,2026-09-15,Planning,AfDB,95000000,Export cassava chips,Soil Carbon Enrichment
+SP013,P013,Osun Poultry Boost,Osun,Osun Poultry Assoc.,2025-10-01,2026-09-30,Active,FGN Grant,75000000,Poultry production,Waste-to-Fertilizer
+SP014,P014,Edo Tomato Cluster,Edo,Edo Tomato Growers,2025-10-15,2026-10-14,Active,Private Investor,85000000,Tomato processing,Drip Irrigation
+SP015,P015,Anambra Vegetable Belt,Anambra,Anambra Veg Network,2025-11-01,2026-10-31,Pending,FGN Grant,65000000,Vegetable supply chain,Mulching Practices
+SP016,P016,Delta Rice Mill,Delta,Delta Rice Assoc.,2025-11-15,2026-11-15,Active,IFAD,115000000,Local rice milling,Renewable Energy Usage
+SP017,P017,Kwara Honey Project,Kwara,Kwara Beekeepers Coop,2025-12-01,2026-11-30,Planning,World Bank,55000000,Honey production,Pollinator Habitat
+SP018,P018,Bauchi Groundnut Dev,Bauchi,Bauchi Groundnut Farmers,2025-12-15,2026-12-14,Active,FGN Grant,77000000,Groundnut oil processing,Crop Rotation
+SP019,P019,Taraba Tea Expansion,Taraba,Taraba Tea Co-op,2026-01-01,2027-12-31,Active,Private Investor,90000000,Tea production,Shade Management
+SP020,P020,Abuja Smart Greenhouses,Abuja,Abuja GreenTech Ltd.,2026-01-15,2027-01-14,Planning,FGN/IFAD,160000000,Smart greenhouse deployment,Climate-Smart Irrigation

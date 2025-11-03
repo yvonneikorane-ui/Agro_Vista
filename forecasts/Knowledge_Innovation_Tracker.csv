@@ -1,0 +1,21 @@
+resource_id,resource_name,resource_type,target_audience,Participants_Trained,date_created,access_method,adoption_status,impact_metrics,case_studies
+R001,Climate-Smart Rice Guide,Manual,Farmers,500,2025-01-05,PDF download,High,500 farmers trained,Kano Rice Pilot
+R002,Mobile Soil Test App,App,Extension Officers,200,2025-01-08,Play Store,Medium,"2,000 tests logged",Kaduna Youth Agro
+R003,Organic Fertilizer Training Video,Video,Farmers,300,2025-01-12,YouTube,High,"1,200 views",Oyo Cassava Boost
+R004,Market Price Dashboard,Web Portal,Cooperatives,150,2025-01-15,Web login,Low,10 coops onboarded,Lagos Urban Farms
+R005,Drought-Resistant Seed Catalog,PDF,Farmers,250,2025-01-18,PDF download,Medium,50 seed varieties listed,Sokoto Dryland Project
+R006,Cassava Processing Toolkit,Manual,Processors,300,2025-01-22,PDF download,High,300 processors trained,Oyo Cassava Boost
+R007,Farm Equipment Booking App,App,Farmers,210,2025-01-25,Play Store,Medium,700 bookings logged,Kano Rice Expansion
+R008,Climate-Smart Farming Podcast,Audio,Youth Farmers,100,2025-01-28,Spotify,High,"5,000 downloads",Kaduna Youth Agro
+R009,Pest Management Infographic,Infographic,Extension Officers,50,2025-02-01,PDF download,Medium,Shared in 20 LGAs,Benue Maize Revolution
+R010,Cocoa Shade-Growing Manual,Manual,Cocoa Farmers,1500,2025-02-05,PDF download,High,"1,500 farmers reached",Cross River Cocoa Rehab
+R011,Women Agri-Finance Webinar Recording,Video,Women Farmers,400,2025-02-09,YouTube,Medium,800 views,Youth/Women Empowerment
+R012,Solar Irrigation Case Study Collection,Case Study,Investors,100,2025-02-12,Web download,High,10 projects profiled,Niger Irrigation Upgrade
+R013,Maize Hybrid Seeds Factsheet,PDF,Farmers,200,2025-02-15,PDF download,High,"Distributed to 1,000 farms",Benue Maize Revolution
+R014,Potato Storage Training Video,Video,Farmers,180,2025-02-18,YouTube,Medium,600 views,Plateau Potato Program
+R015,Agroforestry Practices Guide,Manual,Cooperatives,400,2025-02-21,PDF download,High,400 coops trained,Oyo Cassava Boost
+R016,Beekeeping for Pollination Handbook,Manual,Youth Farmers,150,2025-02-24,PDF download,Medium,150 farmers adopted,Taraba Beekeeping
+R017,Livestock Vaccination Mobile Tracker,App,Extension Officers,170,2025-02-27,Play Store,Low,100 herds tracked,Zamfara Livestock Upgrade
+R018,Wetlands Farming Virtual Tour,Video,Investors,210,2025-03-02,Web streaming,High,15 investment leads,Bayelsa Wetlands Farming
+R019,Urban Vertical Farming E-Guide,PDF,Urban Farmers,300,2025-03-05,PDF download,Medium,"1,000 downloads",FCT Agri-Tech Hub
+R020,ESG Impact Metrics Template,Template,Project Managers,350,2025-03-08,Excel download,High,Used by 25 projects,Investments KPIs Tracker

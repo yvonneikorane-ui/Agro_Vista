@@ -1,0 +1,21 @@
+farmer_identity,gender,date_of_birth,phone_number,NIN_number,BVN_number,LGA,village,gps_lat,gps_long,crop_grown,farm_size,fertilizer_used_before,farm_needs(next_season),farmer_photo,nin_card_photo,enumerator_name,date_of_interview,Kg_fertilizer_Used
+F001,Male,3/12/1985,8031234567,11223344551,2211445566,Kano Municipal,Bompai,12.0234,8.5123,Rice,3.5,Yes,Improved seed & fertilizer,photo_F001.jpg,nin_F001.jpg,Amina Yusuf,1/10/2025,23
+F002,Female,6/8/1990,8123456789,22334455662,3322556677,Dawakin Tofa,Gwarzo,12.0345,8.4987,Maize,2,No,Fertilizer & irrigation pump,photo_F002.jpg,nin_F002.jpg,Musa Bello,1/11/2025,45
+F003,Male,11/22/1978,8034567891,33445566773,4433667788,Kura,Kura Town,12.0123,8.4655,Tomato,1.2,Yes,Access to credit,photo_F003.jpg,nin_F003.jpg,Amina Yusuf,1/11/2025,56
+F004,Female,9/15/1988,8134567902,44556677884,5544778899,Kumbotso,Chiranchi,12.0789,8.5333,Groundnut,4,Yes,Tractors & improved seed,photo_F004.jpg,nin_F004.jpg,Musa Bello,1/12/2025,34
+F005,Male,12/3/1995,8045679013,55667788995,6655889900,Tarauni,Tarauni Village,12.0912,8.5456,Sorghum,2.5,No,Fertilizer & market access,photo_F005.jpg,nin_F005.jpg,Amina Yusuf,1/12/2025,78
+F006,Female,5/19/1982,8156790124,66778899006,7766990011,Minjibir,Minjibir,12.1045,8.5234,Rice,3,Yes,Mechanization support,photo_F006.jpg,nin_F006.jpg,Musa Bello,1/13/2025,90
+F007,Male,7/21/1979,8067891235,77889900117,8877001122,Bichi,Bichi,12.0654,8.4777,Millet,1.8,No,Fertilizer & extension,photo_F007.jpg,nin_F007.jpg,Amina Yusuf,1/13/2025,120
+F008,Female,1/9/1993,8178912346,88990011228,9988112233,Rano,Rano Town,11.9987,8.4211,Soybean,2.2,Yes,Training on climate practices,photo_F008.jpg,nin_F008.jpg,Musa Bello,1/14/2025,67
+F009,Male,8/17/1980,8089123457,99001122339,1099223344,Tofa,Dawanau,12.0456,8.512,Rice,3.1,Yes,Fertilizer & storage facility,photo_F009.jpg,nin_F009.jpg,Amina Yusuf,1/14/2025,54
+F010,Female,10/28/1998,8191234568,10112233440,2100334455,Kabo,Kabo Village,12.11,8.5666,Cowpea,1.5,No,Irrigation system,photo_F010.jpg,nin_F010.jpg,Musa Bello,1/15/2025,88
+F011,Male,3/30/1987,8012349876,11123344551,3201445566,Sumaila,Sumaila Town,11.9856,8.3999,Rice,4.5,Yes,Improved fertilizer,photo_F011.jpg,nin_F011.jpg,Amina Yusuf,1/15/2025,42
+F012,Female,12/14/1989,8123459876,12234455662,4302556677,Madobi,Madobi,12.0754,8.5344,Groundnut,3,Yes,Access to credit & training,photo_F012.jpg,nin_F012.jpg,Musa Bello,1/16/2025,36
+F013,Male,6/5/1981,8034569876,13345566773,5403667788,Wudil,Wudil Village,11.9976,8.41,Maize,2.8,No,Fertilizer & seedlings,photo_F013.jpg,nin_F013.jpg,Amina Yusuf,1/16/2025,95
+F014,Female,4/22/1992,8134569876,14456677884,6504778899,Gaya,Gaya Town,12.0656,8.4788,Soybean,3.4,Yes,Mechanization support,photo_F014.jpg,nin_F014.jpg,Musa Bello,1/17/2025,110
+F015,Male,9/18/1977,8045679876,15567788995,7605889900,Warawa,Warawa Village,12.0888,8.5222,Sorghum,2.6,Yes,Fertilizer & irrigation pump,photo_F015.jpg,nin_F015.jpg,Amina Yusuf,1/17/2025,74
+F016,Female,11/11/1984,8156799876,16678899006,8706990011,Doguwa,Doguwa,12.0344,8.4999,Millet,1.9,No,Improved seed & training,photo_F016.jpg,nin_F016.jpg,Musa Bello,1/18/2025,81
+F017,Male,8/3/1991,8067899876,17789900117,9807001122,Gezawa,Gezawa Town,12.0999,8.5333,Tomato,2.1,Yes,Fertilizer & storage,photo_F017.jpg,nin_F017.jpg,Amina Yusuf,1/18/2025,63
+F018,Female,7/7/1994,8178999876,18890011228,1098112233,Gabasawa,Gabasawa,11.9765,8.3888,Rice,3.3,Yes,Irrigation & extension,photo_F018.jpg,nin_F018.jpg,Musa Bello,1/19/2025,59
+F019,Male,2/20/1983,8089999876,19900122339,1199223344,Bunkure,Bunkure Village,12.0555,8.4899,Maize,2.7,No,Fertilizer & credit,photo_F019.jpg,nin_F019.jpg,Amina Yusuf,1/19/2025,102
+F020,Female,5/25/1996,8191119876,20112233440,1290334455,Gwarzo,Gwarzo Village,12.1,8.5,Groundnut,2.4,Yes,Mechanization & storage,photo_F020.jpg,nin_F020.jpg,Musa Bello,1/20/2025,69

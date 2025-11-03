@@ -1,0 +1,21 @@
+farmer_id,full_name,gender,age,phone,nin,state,cooperative_name,subsidy_recieved,DATE
+FARM001,Amina Bello,Female,32,8031234567,12345678901,Kano,Green Fields Coop,120000,1/15/2025
+FARM002,Musa Ibrahim,Male,45,8039876543,22345678901,Kaduna,Rice Growers Union,145500,1/22/2025
+FARM003,Chika Okeke,Female,38,8123456789,32345678901,Anambra,Women Farmers Group,98000,2/5/2025
+FARM004,John Adeyemi,Male,29,7012349876,42345678901,Oyo,Cassava Farmers Assoc.,132750,2/12/2025
+FARM005,Grace Olumide,Female,41,8139874567,52345678901,Lagos,Urban Gardens Coop,110300,2/20/2025
+FARM006,Peter Yakubu,Male,36,8024567893,62345678901,Plateau,Youth Agro Alliance,156000,3/3/2025
+FARM007,Binta Sule,Female,27,9012346785,72345678901,Niger,Rice Farmers Assoc.,872050,3/10/2025
+FARM008,Ibrahim Goni,Male,50,7024568934,82345678901,Borno,Lake Chad Farmers,142800,3/18/2025
+FARM009,Comfort Eze,Female,34,8135678943,92345678901,Enugu,AgroWomen Network,125400,3/25/2025
+FARM010,Suleiman Danladi,Male,40,8023459876,13345678901,Zamfara,Dryland Farmers Coop,138600,4/1/2025
+FARM011,Hadiza Umar,Female,31,8019874567,23345678901,Jigawa,Green Pastures Coop,990900,4/8/2025
+FARM012,Felix Okon,Male,37,9023459876,33345678901,Cross River,Palm Farmers Union,160000,4/15/2025
+FARM013,Ngozi Nwosu,Female,30,8134567821,43345678901,Imo,Women Cassava Growers,112750,4/22/2025
+FARM014,Yakubu Musa,Male,42,8045678912,53345678901,Gombe,Maize Growers Coop,118500,5/1/2025
+FARM015,Aisha Lawal,Female,28,7056789123,63345678901,Kwara,Youth Farmers Forum,134200,5/8/2025
+FARM016,Michael Okafor,Male,35,8167891234,73345678901,Delta,Fish Farmers Assoc.,105000,5/15/2025
+FARM017,Hauwa Abdullahi,Female,33,8078912345,83345678901,Taraba,Women Agro Group,140350,5/22/2025
+FARM018,Usman Bello,Male,48,8189123456,93345678901,Sokoto,Cereal Farmers Assoc.,127000,6/1/2025
+FARM019,Blessing Adebayo,Female,26,7091234567,14345678901,Ekiti,Vegetable Growers Coop,101800,6/8/2025
+FARM020,Aliyu Yusuf,Male,39,8012349875,24345678901,Benue,Rice Farmers Assoc.,149900,6/15/2025

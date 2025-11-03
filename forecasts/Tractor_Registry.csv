@@ -1,0 +1,20 @@
+Tractor_ID,Manufacturer Serial_Number,Manufacturers_name,Owner_name,gps_lat,gps_long,State,Alocation_Criteria,Delivery_Schedule,actual_delivery_date,QR_Code_URL,status,tractor_usage_hours
+T-0001,JD8R-00231,John Deere,Garba,9.0833,9.08330,Kaduna,Women-led cooperative,10/15/2025,10/16/2025,http://qrco.de/T0001,Active,1
+T-0002,JD8R-00232,Massey Ferguson,Mohammed,12.0000,8.51670,Kano,Youth mechanism group,10/16/2025,10/17/2025,http://qrco.de/T0002,Active,2
+T-0003,JD8R-00233,New Holland,Ade,6.4500,6.45000,Ogun,Anchor processor off-taker,10/17/2025,10/18/2025,http://qrco.de/T0003,Maintained,3
+T-0004,JD8R-00234,Kubota,Gbenga,7.3833,7.38330,Oyo,Women-led cooperative,10/28/2025,10/29/2025,http://qrco.de/T0004,Active,2
+T-0005,JD8R-00235,John Deere,Isa,10.3150,10.31500,Plateau,Youth mechanism group,11/2/2025,11/3/2025,http://qrco.de/T0005,Active,2
+T-0006,JD8R-00236,Massey Ferguson,Musa,11.8000,13.15000,Borno,Conflict-affected smallholder,11/2/2025,11/4/2025,http://qrco.de/T0006,Active,2
+T-0007,JD8R-00237,Kubota,Nguse,9.9333,8.88330,Benue,Anchor processor off-taker,11/10/2025,11/12/2025,http://qrco.de/T0007,Maintained,3
+T-0008,JD8R-00238,New Holland,Halilu,11.0833,11.08330,Katsina,Youth mechanism group,11/15/2025,11/17/2025,http://qrco.de/T0008,Active,1
+T-0009,JD8R-00239,John Deere,John,6.3500,6.35000,Cross River,Women-led cooperative,11/20/2025,11/21/2025,http://qrco.de/T0009,Active,1
+T-0010,JD8R-00240,Massey Ferguson,Babatunde,8.5000,8.50000,Kwara,Anchor processor off-taker,11/25/2025,11/27/2025,http://qrco.de/T0010,Retired,5
+T-0011,JD8R-00241,Kubota,Salisu,9.0833,9.08330,Borno,Women-led cooperative,11/26/2026,11/27/2026,http://qrco.de/T0011,Active,1
+T-0012,JD8R-00242,John Deere,John Deere,8.5000,8.50000,Kwara,Youth mechanism group,11/26/2025,11/27/2025,http://qrco.de/T0012,Active,2
+T-0013,JD8R-00243,New Holland,New Holland,11.0833,11.08330,Katsina,Anchor processor off-taker,11/28/2025,12/1/2025,http://qrco.de/T0013,Maintained,4
+T-0014,JD8R-00244,Massey Ferguson,Massey Ferguson,7.3833,7.38330,Oyo,Conflict-affected smallholder,11/29/2025,12/1/2025,http://qrco.de/T0014,Active,1
+T-0015,JD8R-00245,Kubota,Kubota,9.0833,9.08330,Kaduna,Women-led cooperative,11/30/2025,12/2/2025,http://qrco.de/T0015,Active,1
+T-0016,JD8R-00246,John Deere,John Deere,6.4500,6.45000,Ogun,Youth mechanism group,12/1/2025,12/3/2025,http://qrco.de/T0016,Retired,5
+T-0017,JD8R-00247,New Holland,New Holland,10.3150,10.31500,Plateau,Anchor processor off-taker,12/2/2025,12/3/2025,http://qrco.de/T0017,Active,1
+T-0018,JD8R-00248,Massey Ferguson,Massey Ferguson,6.3500,6.35000,Cross River,Youth mechanism group,12/3/2025,12/5/2025,http://qrco.de/T0018,Active,2
+T-0019,JD8R-00249,John Deere,John Deere,9.0833,9.08330,Borno,Conflict-affected smallholder,12/4/2025,12/5/2025,http://qrco.de/T0019,Maintained,4
