@@ -1,191 +1,151 @@
-# app.py
-"""
-Agro_Vista Flask app (production-ready)
-- Reads tables from PostgreSQL using DATABASE_URL env var
-- Falls back to Google Sheets if DB empty (optional)
-- Serves a simple HTML UI at / (mobile responsive)
-- API endpoints: /api/all_forecasts and /api/forecast?sheet=<name>
-"""
 import os
 import pandas as pd
 from flask import Flask, request, jsonify, Response
-from sqlalchemy import create_engine, text
-import google.generativeai as genai  # keep if you need Gemini (set GENIE_API_KEY)
+from sqlalchemy import create_engine
+import google.generativeai as genai
+import plotly.express as px
+import io, base64
+from flask_cors import CORS
 
-# -------- Configuration (read secrets from env) ----------------
-DATABASE_URL = os.getenv("DATABASE_URL")  # must be provided in Railway env
-GENIE_API_KEY = os.getenv("GENIE_API_KEY")  # optional, for Gemini
-# optional Google Sheets fallback (only used if DB empty)
-SHEET_ID = os.getenv("SHEET_ID")  # keep blank or set if you want fallback read
-# ----------------------------------------------------------------
+# ---------------- Config ----------------
+DATABASE_URL = os.getenv("DATABASE_URL")  # Railway Postgres URL
+GENIE_API_KEY = os.getenv("GENIE_API_KEY")  # Your Gemini API key
+SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
 
 if GENIE_API_KEY:
     genai.configure(api_key=GENIE_API_KEY)
 
-# Create SQLAlchemy engine; enable sslmode if host requires it
-# Railway provides a full DATABASE_URL; for external DBs you might need sslmode=require
-connect_args = {}
-if DATABASE_URL and ("sslmode" not in DATABASE_URL):
-    # If using an external DB that requires SSL, append ?sslmode=require when creating engine
-    if DATABASE_URL.startswith("postgresql://") and "render.com" in DATABASE_URL:
-        # Render external DB usually accepts standard URL; if you hit connect issues try adding ?sslmode=require
-        pass
-
-engine = create_engine(DATABASE_URL, connect_args=connect_args) if DATABASE_URL else None
+engine = create_engine(DATABASE_URL) if DATABASE_URL else None
 
 app = Flask(__name__)
+CORS(app)  # Allow cross-origin if needed
 
-# List of expected tables (keeps same naming as you used)
-SHEET_NAMES = [
+# ---------------- Forecast Sheets ----------------
+sheet_names = [
     "youth_women_empowerment_forecast",
-    "tractor_registry_forecast",
-    "national_agro_farmer_mapping_forecast",
-    "stakeholders_partners_forecast",
-    "knowledge_innocvation_tracker_forecast",
-    "project_overview_forecast",
-    "e_voucher_forecast",
-    "farmers_registry_forecast",
-    "investment_kpis_forecast",
-    "policy_simulator_forecast",
-    "rainified_crops_forecast",
-    "climate_carbon_credits_forecast",
-    "yield_food_security_forecast",
-    "input_pest_disease_alert_forecast"
+    "Tractor_Registry_forecast",
+    "National_Agro_Farmer_Mapping_Forecast",
+    "Stakeholders_Partners_Forecast",
+    "Knowledge_Innocvation_Tracker_Forecast",
+    "Project_Overview_Forecast",
+    "E_Voucher_Forecast",
+    "Farmers_Registry_Forecast",
+    "Investment_KPIs_Forecast",
+    "Policy_Simulator_Forecast",
+    "Rainified_Crops_Forecast",
+    "Climate_Carbon_Credits_Forecast",
+    "Yield_Food_Security_Forecast",
+    "Input_Pest_Disease_Alert_Forecast"
 ]
 
-def load_all_sheets_from_db():
-    """Load all expected tables from Postgres into a single DataFrame."""
-    if engine is None:
-        return pd.DataFrame()
+def load_all_sheets():
+    """Load all forecasts from Postgres, fallback to Google Sheets if empty."""
     dfs = []
-    for t in SHEET_NAMES:
-        table_name = t.lower()
-        try:
-            df = pd.read_sql_table(table_name, engine)
-            df["Source_Sheet"] = t
-            dfs.append(df)
-        except Exception as e:
-            # table may not exist - skip
-            app.logger.debug(f"load_all_sheets_from_db: skipping {table_name}: {e}")
+    if engine:
+        for s in sheet_names:
+            table_name = s.lower()
+            try:
+                df = pd.read_sql_table(table_name, engine)
+                df["Source_Sheet"] = s
+                dfs.append(df)
+            except:
+                continue
+    if not dfs and SHEET_ID:
+        # Fallback: Google Sheets CSV
+        for s in sheet_names:
+            try:
+                url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={s}"
+                df = pd.read_csv(url)
+                df["Source_Sheet"] = s
+                dfs.append(df)
+            except:
+                continue
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-def load_forecasts_fallback_from_sheets(sheet_id=SHEET_ID):
-    """Optional fallback: read the youth sheet from Google Sheets if DB is empty."""
-    if not sheet_id:
-        return pd.DataFrame()
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=youth_women_empowerment_forecast"
-    try:
-        return pd.read_csv(url)
-    except Exception as e:
-        app.logger.debug(f"Google Sheets fallback failed: {e}")
-        return pd.DataFrame()
-
-# ------------------ Routes ------------------
-@app.route("/", methods=["GET"])
+# ---------------- Routes ----------------
+@app.route("/")
 def index():
-    # Minimal responsive HTML UI (keeps design from your previous code)
-    html = """
-    <!doctype html>
-    <html>
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="en">
     <head>
-      <meta charset="utf-8"/>
-      <meta name="viewport" content="width=device-width, initial-scale=1"/>
+      <meta charset="UTF-8">
       <title>AgroVista Forecast Intelligence</title>
       <style>
-        body{font-family:Segoe UI,Arial; margin:0; background:#f7f9f7; color:#333}
-        header{background:linear-gradient(90deg,#2e7d32,#66bb6a); color:#fff; padding:18px; text-align:center}
-        main{max-width:960px;margin:28px auto;padding:0 16px;text-align:center}
-        .input-area{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-        input#q{flex:1 1 300px;padding:10px;border-radius:6px;border:1px solid #ccc}
-        button{padding:10px 14px;border-radius:6px;background:#4CAF50;color:#fff;border:none}
-        #answer{margin-top:20px;color:#1b5e20;font-weight:600}
-        table{margin:16px auto;border-collapse:collapse;width:100%;max-width:900px}
-        th,td{padding:8px;border:1px solid #ddd;text-align:left}
-        @media(max-width:600px){button{width:100%}}
+        body {font-family:'Segoe UI',Arial; margin:0; background:#f7f9f7; color:#333;}
+        header {background:linear-gradient(90deg,#2e7d32,#66bb6a); color:white; padding:20px; text-align:center;}
+        main {margin:40px auto; max-width:800px; text-align:center;}
+        input#q {padding:12px; width:70%; font-size:1em; border-radius:6px; border:1px solid #ccc;}
+        button {padding:12px 20px; margin:5px; font-size:1em; cursor:pointer; background-color:#4CAF50; color:white; border:none; border-radius:5px;}
+        #answer {margin-top:30px; font-weight:bold; font-size:1.1em; color:#1b5e20;}
+        #chart {margin-top:30px;}
       </style>
     </head>
     <body>
-      <header><h1>AgroVista Forecast Intelligence</h1><p>AI-Powered Agricultural Forecasts</p></header>
+      <header>
+        <h1>AgroVista Forecast Intelligence</h1>
+        <p>AI-Powered Agricultural Forecasting</p>
+      </header>
       <main>
-        <div class="input-area">
-          <input id="q" placeholder="Ask about yield, pests, investments, or climate..." />
-          <button onclick="ask()">Ask</button>
-        </div>
+        <input id="q" placeholder="Ask about yield, pests, investments, or climate...">
+        <button onclick="ask()">Ask</button>
         <div id="answer"></div>
-        <div id="table"></div>
+        <div id="chart"></div>
       </main>
-    <script>
-    async function ask(){
-      const q = document.getElementById('q').value;
-      if(!q){document.getElementById('answer').innerText='Please type a question';return;}
-      const res = await fetch('/api/query', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q})});
-      const data = await res.json();
-      document.getElementById('answer').innerText = data.answer || JSON.stringify(data, null, 2);
-      if (data.table_html) { document.getElementById('table').innerHTML = data.table_html; }
-    }
-    </script>
+      <script>
+        async function ask(){
+          const q = document.getElementById('q').value;
+          if(!q){document.getElementById('answer').innerText='Type a question'; return;}
+          const res = await fetch('/ask', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({question:q})
+          });
+          const data = await res.json();
+          document.getElementById('answer').innerText = data.answer;
+          if(data.chart){ document.getElementById('chart').innerHTML='<img src="data:image/png;base64,'+data.chart+'">' }
+        }
+      </script>
     </body>
     </html>
     """
-    return Response(html, mimetype="text/html")
+    return Response(html_content, mimetype="text/html")
 
-@app.route("/api/all_forecasts", methods=["GET"])
-def api_all_forecasts():
-    df = load_all_sheets_from_db()
-    if df.empty:
-        df = load_forecasts_fallback_from_sheets()
-        if df.empty:
-            return jsonify({"error": "No data found."}), 404
-    return jsonify(df.to_dict(orient="records"))
-
-@app.route("/api/forecast", methods=["GET"])
-def api_forecast_by_sheet():
-    sheet = request.args.get("sheet")
-    if not sheet:
-        return jsonify({"error":"please provide sheet parameter e.g. ?sheet=youth_women_empowerment_forecast"}), 400
+@app.route("/ask", methods=["POST"])
+def ask():
     try:
-        df = pd.read_sql_table(sheet.lower(), engine)
-        return jsonify(df.to_dict(orient="records"))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        q = request.json.get("question", "")
+        if not q: return jsonify({"answer":"Please ask a question."})
+        df = load_all_sheets()
+        if df.empty: return jsonify({"answer":"No forecast data available."})
 
-@app.route("/api/query", methods=["POST"])
-def api_query():
-    """
-    Lightweight "query" endpoint:
-    - Loads combined DF from DB
-    - Sends a short summary table plus the user question to Gemini (if API key provided)
-    - Returns answer + small HTML table preview to display in UI
-    """
-    req = request.get_json(force=True)
-    q = req.get("question","")
-    df = load_all_sheets_from_db()
-    if df.empty:
-        df = load_forecasts_fallback_from_sheets()
-        if df.empty:
-            return jsonify({"answer":"No forecast data available."})
-
-    # Prepare a small preview table HTML (first 8 rows)
-    preview = df.head(8).fillna("").to_html(classes="preview", index=False)
-
-    answer_text = ""
-    if GENIE_API_KEY:
-        # Prepare concise prompt with sheet names and small sample
-        sample = df.head(6).to_dict(orient="records")
-        prompt = f"You are an agricultural analyst. Given this dataset (sample): {sample}\nUser question: {q}\nAnswer concisely."
+        # Plot first 20 rows as line chart
         try:
-            model = genai.GenerativeModel("models/gemini-2.0-flash")
-            resp = model.generate_content(prompt)
-            answer_text = resp.text or ""
-        except Exception as e:
-            answer_text = f"Gemini error: {e}"
-    else:
-        # Simple fallback local answer
-        answer_text = f"(No GENIE_API_KEY) Received question: {q}. Showing a preview of data."
-    return jsonify({"answer": answer_text, "table_html": preview})
+            fig = px.line(df.head(20))
+            buf = io.BytesIO()
+            fig.write_image(buf, format="png")
+            buf.seek(0)
+            chart_b64 = base64.b64encode(buf.read()).decode("utf-8")
+        except:
+            chart_b64 = None
 
-# ------------------ Run (for local testing) ------------------
+        # Gemini AI response
+        answer = ""
+        if GENIE_API_KEY:
+            try:
+                model = genai.GenerativeModel("models/gemini-1.5-pro")
+                resp = model.generate_content(f"{df.head(15).to_dict(orient='records')}\nUser question: {q}")
+                answer = resp.text or "(No response)"
+            except Exception as e:
+                answer = f"Gemini error: {e}"
+        else:
+            answer = f"(No GENIE_API_KEY) Question received: {q}"
+
+        return jsonify({"answer": answer, "chart": chart_b64})
+    except Exception as e:
+        return jsonify({"answer": f"Server error: {str(e)}"})
+
+# ---------------- Run ----------------
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "8080"))
-    # When running locally: app.run(host='0.0.0.0', port=port, debug=True)
+    port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
