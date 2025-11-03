@@ -3,5 +3,5 @@ pandas==2.2.3
 SQLAlchemy==2.0.23
 psycopg2-binary==2.9.9
 gunicorn==23.0.0
-google-generativeai==0.17.0  # optional; remove if you don't call Gemini
+google-generativeai
 plotly==5.15.0
