@@ -1,6 +1,5 @@
 
 Flask==2.3.2
-gunicorn==23.0.0
 google-generativeai
 plotly==5.15.0
 gunicorn==21.2.0
