@@ -17,7 +17,6 @@ if GENAI_API_KEY:
 engine = create_engine(DATABASE_URL) if DATABASE_URL else None
 
 app = Flask(__name__)
-CORS(app)  # Allow cross-origin if needed
 
 # ---------------- Forecast Sheets ----------------
 sheet_names = [
