@@ -70,74 +70,154 @@ def index():
       <meta charset="UTF-8">
       <title>AgroVista Forecast Intelligence</title>
       <style>
-        body {font-family:'Segoe UI',Arial; margin:0; background:#f7f9f7; color:#333;}
-        header {background:linear-gradient(90deg,#2e7d32,#66bb6a); color:white; padding:20px; text-align:center;}
-        main {margin:40px auto; max-width:800px; text-align:center;}
-        input#q {padding:12px; width:70%; font-size:1em; border-radius:6px; border:1px solid #ccc;}
-        button {padding:12px 20px; margin:5px; font-size:1em; cursor:pointer; background-color:#4CAF50; color:white; border:none; border-radius:5px;}
-        #answer {margin-top:30px; font-weight:bold; font-size:1.1em; color:#1b5e20;}
-        #chart {margin-top:30px;}
+        body {
+          font-family: 'Segoe UI', Arial, sans-serif;
+          margin: 0;
+          background: #f7f9f7;
+          color: #333;
+        }
+        header {
+          background: linear-gradient(90deg, #2e7d32, #66bb6a);
+          color: white;
+          padding: 20px;
+          text-align: center;
+        }
+        header h1 {
+          margin: 0;
+          font-size: 2.3em;
+          letter-spacing: 1px;
+        }
+        main {
+          margin: 40px auto;
+          max-width: 800px;
+          text-align: center;
+        }
+        input#q {
+          padding: 12px;
+          width: 70%;
+          font-size: 1em;
+          border-radius: 6px;
+          border: 1px solid #ccc;
+        }
+        button {
+          padding: 12px 20px;
+          margin: 5px;
+          font-size: 1em;
+          cursor: pointer;
+          background-color: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 5px;
+        }
+        button:hover {
+          background-color: #45a049;
+        }
+        #answer {
+          margin-top: 30px;
+          font-weight: bold;
+          font-size: 1.1em;
+          color: #1b5e20;
+          line-height: 1.6em;
+        }
+        #chart {
+          margin-top: 30px;
+        }
+        footer {
+          text-align: center;
+          padding: 15px;
+          margin-top: 50px;
+          color: #555;
+          border-top: 1px solid #ddd;
+        }
       </style>
     </head>
     <body>
       <header>
         <h1>AgroVista Forecast Intelligence</h1>
-        <p>AI-Powered Agricultural Forecasting</p>
+        <p>AI-Powered Agricultural Forecasting for National Food Security</p>
       </header>
       <main>
         <input id="q" placeholder="Ask about yield, pests, investments, or climate...">
         <button onclick="ask()">Ask</button>
+        <button onclick="startListening()">🎤 Speak</button>
         <div id="answer"></div>
         <div id="chart"></div>
       </main>
+      <footer>
+        © 2025 FMAFS | AgroVista AI Platform
+      </footer>
+
       <script>
-        async function ask(){
-          const q = document.getElementById('q').value;
-          if(!q){document.getElementById('answer').innerText='Type a question'; return;}
-          const res = await fetch('/ask', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({question:q})
-          });
-          const data = await res.json();
-          document.getElementById('answer').innerText = data.answer;
-          if(data.chart){ document.getElementById('chart').innerHTML='<img src="data:image/png;base64,'+data.chart+'">' }
+      async function ask(){
+        const q = document.getElementById('q').value;
+        if (!q) {
+          document.getElementById('answer').innerText = "Please type a question first.";
+          return;
         }
+        const res = await fetch('/ask', {
+          method:"POST",
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({question:q})
+        });
+        const data = await res.json();
+        document.getElementById('answer').innerText = data.answer;
+        if (data.chart) {
+          document.getElementById('chart').innerHTML = '<img src="data:image/png;base64,' + data.chart + '">';
+        }
+        const utterance = new SpeechSynthesisUtterance(data.answer);
+        speechSynthesis.speak(utterance);
+      }
+
+      function startListening(){
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'en-US';
+        recognition.start();
+        recognition.onresult = function(event){
+          document.getElementById('q').value = event.results[0][0].transcript;
+        };
+      }
       </script>
     </body>
     </html>
     """
     return Response(html_content, mimetype="text/html")
 
+# ============================
+# BACKEND FORECAST ENDPOINT
+# ============================
 @app.route("/ask", methods=["POST"])
 def ask():
     try:
         q = request.json.get("question", "")
-        if not q: return jsonify({"answer":"Please ask a question."})
-        df = load_all_sheets()
-        if df.empty: return jsonify({"answer":"No forecast data available."})
+        if not q:
+            return jsonify({"answer": "Please ask a question."})
 
-        # Plot first 20 rows as line chart
+        df = load_all_sheets()
+        if df.empty:
+            return jsonify({"answer": "No forecast data available."})
+
+        # Generate forecast visualization
         try:
-            fig = px.line(df.head(20))
+            fig = px.line(df.head(20), title="AgroVista Forecast Sample")
             buf = io.BytesIO()
             fig.write_image(buf, format="png")
             buf.seek(0)
             chart_b64 = base64.b64encode(buf.read()).decode("utf-8")
-        except:
+        except Exception:
             chart_b64 = None
 
-        # Gemini AI response
-        answer = ""
-        if GENAI_API_KEY:
-            try:
-                model = genai.GenerativeModel("models/gemini-1.5-pro")
-                resp = model.generate_content(f"{df.head(15).to_dict(orient='records')}\nUser question: {q}")
-                answer = resp.text or "(No response)"
-            except Exception as e:
-                answer = f"Gemini error: {e}"
-        else:
-            answer = f"(No GENAI_API_KEY) Question received: {q}"
+        # Gemini Prompt
+        prompt_text = f"""
+        You are an agricultural AI analyst.
+        Given the forecast dataset below (representing Nigeria's agricultural projections):
+        {df.head(15).to_dict(orient='records')}
+        Provide insights or answers to: {q}
+        """
+
+        # ✅ Use the correct Gemini model
+        model = genai.GenerativeModel("models/gemini-1.5-pro")
+        resp = model.generate_content(prompt_text)
+        answer = resp.text or "No response generated."
 
         return jsonify({"answer": answer, "chart": chart_b64})
     except Exception as e:
