@@ -1,4 +1,3 @@
-
 Flask==2.3.2
 google-generativeai
 plotly==5.15.0
