@@ -67,116 +67,85 @@ def index():
     <!DOCTYPE html>
     <html lang="en">
     <head>
-      <meta charset="UTF-8">
-      <title>AgroVista Forecast Intelligence</title>
-      <style>
-        body {
-          font-family: 'Segoe UI', Arial, sans-serif;
-          margin: 0;
-          background: #f7f9f7;
-          color: #333;
-        }
-        header {
-          background: linear-gradient(90deg, #2e7d32, #66bb6a);
-          color: white;
-          padding: 20px;
-          text-align: center;
-        }
-        header h1 {
-          margin: 0;
-          font-size: 2.3em;
-          letter-spacing: 1px;
-        }
-        main {
-          margin: 40px auto;
-          max-width: 800px;
-          text-align: center;
-        }
-        input#q {
-          padding: 12px;
-          width: 70%;
-          font-size: 1em;
-          border-radius: 6px;
-          border: 1px solid #ccc;
-        }
-        button {
-          padding: 12px 20px;
-          margin: 5px;
-          font-size: 1em;
-          cursor: pointer;
-          background-color: #4CAF50;
-          color: white;
-          border: none;
-          border-radius: 5px;
-        }
-        button:hover {
-          background-color: #45a049;
-        }
-        #answer {
-          margin-top: 30px;
-          font-weight: bold;
-          font-size: 1.1em;
-          color: #1b5e20;
-          line-height: 1.6em;
-        }
-        #chart {
-          margin-top: 30px;
-        }
-        footer {
-          text-align: center;
-          padding: 15px;
-          margin-top: 50px;
-          color: #555;
-          border-top: 1px solid #ddd;
-        }
-      </style>
+        <meta charset="UTF-8">
+        <title>AgroVista Forecast Intelligence</title>
+        <style>
+            body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #f7f9f7; color: #333; }
+            header { background: linear-gradient(90deg, #2e7d32, #66bb6a); color: white; padding: 20px; text-align: center; }
+            header h1 { margin: 0; font-size: 2.3em; }
+            main { margin: 40px auto; max-width: 900px; text-align: center; padding: 0 15px; }
+            .input-area { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-bottom: 25px; }
+            input#q { flex: 1 1 300px; padding: 12px; font-size: 1em; border-radius: 6px; border: 1px solid #ccc; min-width: 200px; }
+            button { padding: 12px 20px; font-size: 1em; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px; transition: 0.3s; }
+            button:hover { background-color: #388e3c; }
+            #answer { margin-top: 30px; font-weight: bold; font-size: 1.1em; color: #1b5e20; line-height: 1.6em; }
+            #chart { margin-top: 30px; }
+            footer { text-align: center; padding: 15px; margin-top: 50px; color: #555; border-top: 1px solid #ddd; }
+            @media (max-width: 600px) { header h1 { font-size: 1.8em; } button { width: 100%; } input#q { width: 100%; } }
+        </style>
     </head>
     <body>
-      <header>
-        <h1>AgroVista Forecast Intelligence</h1>
-        <p>AI-Powered Agricultural Forecasting for National Food Security</p>
-      </header>
-      <main>
-        <input id="q" placeholder="Ask about yield, pests, investments, or climate...">
-        <button onclick="ask()">Ask</button>
-        <button onclick="startListening()">🎤 Speak</button>
-        <div id="answer"></div>
-        <div id="chart"></div>
-      </main>
-      <footer>
-        © 2025 FMAFS | AgroVista AI Platform
-      </footer>
+        <header>
+            <h1>AgroVista Forecast Intelligence</h1>
+            <p>AI-Powered Agricultural Forecasting for National Food Security</p>
+        </header>
+        <main>
+            <div class="input-area">
+                <input id="q" placeholder="Ask about yield, pests, investments, or climate...">
+                <button onclick="ask()">Ask</button>
+                <button onclick="startListening()">🎤 Speak</button>
+                <button onclick="readResponse()">🔊 Read Aloud</button>
+            </div>
+            <div id="answer"></div>
+            <div id="chart"></div>
+        </main>
+        <footer>© 2025 FMAFS | AgroVista AI Platform</footer>
 
-      <script>
-      async function ask(){
-        const q = document.getElementById('q').value;
-        if (!q) {
-          document.getElementById('answer').innerText = "Please type a question first.";
-          return;
-        }
-        const res = await fetch('/ask', {
-          method:"POST",
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({question:q})
-        });
-        const data = await res.json();
-        document.getElementById('answer').innerText = data.answer;
-        if (data.chart) {
-          document.getElementById('chart').innerHTML = '<img src="data:image/png;base64,' + data.chart + '">';
-        }
-        const utterance = new SpeechSynthesisUtterance(data.answer);
-        speechSynthesis.speak(utterance);
-      }
+        <script>
+        let lastAnswer = "";
+        let isReading = false;
+        let currentUtterance = null;
 
-      function startListening(){
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = 'en-US';
-        recognition.start();
-        recognition.onresult = function(event){
-          document.getElementById('q').value = event.results[0][0].transcript;
-        };
-      }
-      </script>
+        async function ask(){
+            const q = document.getElementById('q').value;
+            if (!q) { document.getElementById('answer').innerText = "Please type a question first."; return; }
+            const res = await fetch('/ask', { method:"POST", headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q}) });
+            const data = await res.json();
+            lastAnswer = data.answer;
+            document.getElementById('answer').innerText = data.answer;
+            if (data.chart) {
+                document.getElementById('chart').innerHTML = '<img src="data:image/png;base64,' + data.chart + '">';
+            }
+        }
+
+        function startListening(){
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.start();
+            recognition.onresult = function(event){
+                document.getElementById('q').value = event.results[0][0].transcript;
+            };
+        }
+
+        function readResponse(){
+            if (!lastAnswer){
+                alert("No response available to read aloud.");
+                return;
+            }
+            // Stop reading if already in progress
+            if (isReading){
+                speechSynthesis.cancel();
+                isReading = false;
+                currentUtterance = null;
+                return;
+            }
+            // Otherwise, start reading
+            currentUtterance = new SpeechSynthesisUtterance(lastAnswer);
+            isReading = true;
+            currentUtterance.onend = () => { isReading = false; };
+            speechSynthesis.speak(currentUtterance);
+        }
+        </script>
     </body>
     </html>
     """
@@ -196,9 +165,10 @@ def ask():
         if df.empty:
             return jsonify({"answer": "No forecast data available."})
 
-        # Generate forecast visualization
+        # Multi-sheet chart visualization
         try:
-            fig = px.line(df.head(20), title="AgroVista Forecast Sample")
+            df_sample = df.groupby("Source_Sheet").head(3)
+            fig = px.line(df_sample, title="AgroVista Multi-Sheet Forecast Overview", color="Source_Sheet")
             buf = io.BytesIO()
             fig.write_image(buf, format="png")
             buf.seek(0)
@@ -206,23 +176,30 @@ def ask():
         except Exception:
             chart_b64 = None
 
-        # Gemini Prompt
+        # Combine summaries of all sheets
+        sheet_summary = ""
+        for s in sheet_names:
+            sheet_df = df[df["Source_Sheet"] == s].head(5)
+            sheet_summary += f"\\n--- {s} ---\\n{sheet_df.to_dict(orient='records')}\\n"
+
+        # Gemini prompt
         prompt_text = f"""
-        You are an agricultural AI analyst.
-        Given the forecast dataset below (representing Nigeria's agricultural projections):
-        {df.head(15).to_dict(orient='records')}
-        Provide insights or answers to: {q}
+        You are an agricultural AI analyst for the Nigerian Ministry of Agriculture.
+        Here are 14 forecast datasets from national systems (youth, tractors, climate, yield, etc.):
+        {sheet_summary}
+        Based on this combined data, answer this user query: '{q}'
+        Provide insightful, data-informed forecasts and recommendations.
+        Each section is shown as a well-formatted table. Use this data to answer the user’s query with insights and numeric reasoning
         """
 
-        # ✅ Use the correct Gemini model
-        model = genai.GenerativeModel("models/gemini-1.5-pro")
+        model = genai.GenerativeModel("models/gemini-2.0-flash")
         resp = model.generate_content(prompt_text)
         answer = resp.text or "No response generated."
-
         return jsonify({"answer": answer, "chart": chart_b64})
+
     except Exception as e:
         return jsonify({"answer": f"Server error: {str(e)}"})
-
+    
 # ---------------- Run ----------------
 if __name__ == "__main__":
     gunicorn_app = app
