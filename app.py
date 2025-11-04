@@ -12,7 +12,7 @@ GENAI_API_KEY = os.getenv("GENAI_API_KEY")  # Your Gemini API key
 SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
 
 if GENAI_API_KEY:
-    genai.configure(api_key=GENIE_API_KEY)
+    genai.configure(api_key=GENAI_API_KEY)
 
 engine = create_engine(DATABASE_URL) if DATABASE_URL else None
 
