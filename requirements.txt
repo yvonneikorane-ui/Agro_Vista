@@ -1,13 +1,13 @@
-Flask==2.3.2
+Flask
 flask cors
 google-generativeai
-plotly==5.15.0
-gunicorn==21.2.0
-pandas==2.2.2
-sqlalchemy==2.0.25
-psycopg2-binary==2.9.9
-requests==2.31.0
-python-dotenv==1.0.1
-openpyxl==3.1.2
-google-auth==2.23.4
-google-api-python-client==2.111.0
+plotly
+gunicorn
+pandas
+sqlalchemy
+psycopg2-binary
+requests
+python-dotenv
+openpyxl
+google-auth
+google-api-python-client
