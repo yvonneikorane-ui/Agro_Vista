@@ -5,7 +5,6 @@ from sqlalchemy import create_engine
 import google.generativeai as genai
 import plotly.express as px
 import io, base64
-from flask_cors import CORS
 
 # ---------------- Config ----------------
 DATABASE_URL = os.getenv("DATABASE_URL")  # Railway Postgres URL
