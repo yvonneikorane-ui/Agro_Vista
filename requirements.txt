@@ -1,4 +1,5 @@
 Flask==2.3.2
+flask cors
 google-generativeai
 plotly==5.15.0
 gunicorn==21.2.0
