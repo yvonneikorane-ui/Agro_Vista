@@ -10,6 +10,7 @@ import io, base64
 DATABASE_URL = os.getenv("DATABASE_URL")  # Railway Postgres URL
 GENAI_API_KEY = os.getenv("GENAI_API_KEY")  # Your Gemini API key
 SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
+LOOKER_URL = os.getenv("LOOKER_URL")  # Looker dashboard link
 
 if GENAI_API_KEY:
     genai.configure(api_key=GENAI_API_KEY)
@@ -49,7 +50,6 @@ def load_all_sheets():
             except:
                 continue
     if not dfs and SHEET_ID:
-        # Fallback: Google Sheets CSV
         for s in sheet_names:
             try:
                 url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={s}"
@@ -63,25 +63,25 @@ def load_all_sheets():
 # ---------------- Routes ----------------
 @app.route("/")
 def index():
-    html_content = """
+    html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <title>AgroVista Forecast Intelligence</title>
         <style>
-            body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #f7f9f7; color: #333; }
-            header { background: linear-gradient(90deg, #2e7d32, #66bb6a); color: white; padding: 20px; text-align: center; }
-            header h1 { margin: 0; font-size: 2.3em; }
-            main { margin: 40px auto; max-width: 900px; text-align: center; padding: 0 15px; }
-            .input-area { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-bottom: 25px; }
-            input#q { flex: 1 1 300px; padding: 12px; font-size: 1em; border-radius: 6px; border: 1px solid #ccc; min-width: 200px; }
-            button { padding: 12px 20px; font-size: 1em; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px; transition: 0.3s; }
-            button:hover { background-color: #388e3c; }
-            #answer { margin-top: 30px; font-weight: bold; font-size: 1.1em; color: #1b5e20; line-height: 1.6em; }
-            #chart { margin-top: 30px; }
-            footer { text-align: center; padding: 15px; margin-top: 50px; color: #555; border-top: 1px solid #ddd; }
-            @media (max-width: 600px) { header h1 { font-size: 1.8em; } button { width: 100%; } input#q { width: 100%; } }
+            body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #f7f9f7; color: #333; }}
+            header {{ background: linear-gradient(90deg, #2e7d32, #66bb6a); color: white; padding: 20px; text-align: center; }}
+            header h1 {{ margin: 0; font-size: 2.3em; }}
+            main {{ margin: 40px auto; max-width: 900px; text-align: center; padding: 0 15px; }}
+            .input-area {{ display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-bottom: 25px; }}
+            input#q {{ flex: 1 1 300px; padding: 12px; font-size: 1em; border-radius: 6px; border: 1px solid #ccc; min-width: 200px; }}
+            button {{ padding: 12px 20px; font-size: 1em; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px; transition: 0.3s; }}
+            button:hover {{ background-color: #388e3c; }}
+            #answer {{ margin-top: 30px; font-weight: bold; font-size: 1.1em; color: #1b5e20; line-height: 1.6em; }}
+            #chart {{ margin-top: 30px; }}
+            footer {{ text-align: center; padding: 15px; margin-top: 50px; color: #555; border-top: 1px solid #ddd; }}
+            @media (max-width: 600px) {{ header h1 {{ font-size: 1.8em; }} button {{ width: 100%; }} input#q {{ width: 100%; }} }}
         </style>
     </head>
     <body>
@@ -95,6 +95,7 @@ def index():
                 <button onclick="ask()">Ask</button>
                 <button onclick="startListening()">🎤 Speak</button>
                 <button onclick="readResponse()">🔊 Read Aloud</button>
+                <button onclick="openDashboard()">📊 Dashboard</button>
             </div>
             <div id="answer"></div>
             <div id="chart"></div>
@@ -106,45 +107,52 @@ def index():
         let isReading = false;
         let currentUtterance = null;
 
-        async function ask(){
+        async function ask(){{
             const q = document.getElementById('q').value;
-            if (!q) { document.getElementById('answer').innerText = "Please type a question first."; return; }
-            const res = await fetch('/ask', { method:"POST", headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q}) });
+            if (!q) {{ document.getElementById('answer').innerText = "Please type a question first."; return; }}
+            const res = await fetch('/ask', {{ method:"POST", headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{question:q}}) }});
             const data = await res.json();
             lastAnswer = data.answer;
             document.getElementById('answer').innerText = data.answer;
-            if (data.chart) {
+            if (data.chart) {{
                 document.getElementById('chart').innerHTML = '<img src="data:image/png;base64,' + data.chart + '">';
-            }
-        }
+            }}
+        }}
 
-        function startListening(){
+        function startListening(){{
             const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
             recognition.lang = 'en-US';
             recognition.start();
-            recognition.onresult = function(event){
+            recognition.onresult = function(event){{
                 document.getElementById('q').value = event.results[0][0].transcript;
-            };
-        }
+            }};
+        }}
 
-        function readResponse(){
-            if (!lastAnswer){
+        function readResponse(){{
+            if (!lastAnswer){{
                 alert("No response available to read aloud.");
                 return;
-            }
-            // Stop reading if already in progress
-            if (isReading){
+            }}
+            if (isReading){{
                 speechSynthesis.cancel();
                 isReading = false;
                 currentUtterance = null;
                 return;
-            }
-            // Otherwise, start reading
+            }}
             currentUtterance = new SpeechSynthesisUtterance(lastAnswer);
             isReading = true;
-            currentUtterance.onend = () => { isReading = false; };
+            currentUtterance.onend = () => {{ isReading = false; }};
             speechSynthesis.speak(currentUtterance);
-        }
+        }}
+
+        function openDashboard(){{
+            const url = "{LOOKER_URL or '#'}";
+            if(url === '#'){{
+                alert("Looker dashboard link is not set.");
+                return;
+            }}
+            window.open(url, "_blank");
+        }}
         </script>
     </body>
     </html>
@@ -199,7 +207,7 @@ def ask():
 
     except Exception as e:
         return jsonify({"answer": f"Server error: {str(e)}"})
-    
+
 # ---------------- Run ----------------
 if __name__ == "__main__":
     gunicorn_app = app
