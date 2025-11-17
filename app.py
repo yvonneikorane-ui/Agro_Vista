@@ -1,21 +1,58 @@
 import os
 import pandas as pd
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, abort
 from sqlalchemy import create_engine
 import google.generativeai as genai
 import plotly.express as px
 import io, base64
+import logging
+from functools import wraps
+from time import time
 
 # ---------------- Config ----------------
 DATABASE_URL = os.getenv("DATABASE_URL")  # Railway Postgres URL
 GENAI_API_KEY = os.getenv("GENAI_API_KEY")  # Your Gemini API key
 SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
 LOOKER_URL = os.getenv("LOOKER_URL")  # Looker dashboard link
+REDIS_URL = os.getenv("REDIS_URL")  # Optional Redis for caching (e.g. redis://...)
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")  # Optional header-based protection for sensitive endpoints
+MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "512"))
 
+# ---------------- Additional Production Dependencies & Setup ----------------
+# Configure Gemini client safely
 if GENAI_API_KEY:
     genai.configure(api_key=GENAI_API_KEY)
 
+# SQLAlchemy engine (defer creation if no DB URL)
 engine = create_engine(DATABASE_URL) if DATABASE_URL else None
+
+# Basic logging
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = logging.getLogger("agrovista")
+
+# Optional simple in-memory cache as fallback
+try:
+    # If redis is available, use it - minimal wrapper
+    if REDIS_URL:
+        import redis
+        redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    else:
+        redis_client = None
+except Exception as e:
+    logger.warning("Redis not available: %s", e)
+    redis_client = None
+
+# Simple decorator for optional API key protection on endpoints
+def require_api_key(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if ADMIN_API_KEY:
+            key = request.headers.get("x-api-key") or request.args.get("api_key")
+            if not key or key != ADMIN_API_KEY:
+                logger.warning("Unauthorized access attempt")
+                return jsonify({"error": "unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 app = Flask(__name__)
 
@@ -37,8 +74,32 @@ sheet_names = [
     "Input_Pest_Disease_Alert_Forecast"
 ]
 
+def cache_get(key):
+    try:
+        if redis_client:
+            return redis_client.get(key)
+    except Exception as e:
+        logger.debug("redis get error: %s", e)
+    return None
+
+def cache_set(key, value, expire=300):
+    try:
+        if redis_client:
+            redis_client.set(key, value, ex=expire)
+    except Exception as e:
+        logger.debug("redis set error: %s", e)
+
 def load_all_sheets():
     """Load all forecasts from Postgres, fallback to Google Sheets if empty."""
+    cache_key = "agrovista:all_sheets_v1"
+    cached = cache_get(cache_key)
+    if cached:
+        try:
+            df = pd.read_json(cached, orient="split")
+            return df
+        except Exception:
+            pass
+
     dfs = []
     if engine:
         for s in sheet_names:
@@ -47,7 +108,8 @@ def load_all_sheets():
                 df = pd.read_sql_table(table_name, engine)
                 df["Source_Sheet"] = s
                 dfs.append(df)
-            except:
+            except Exception as e:
+                logger.debug("table %s not found or error: %s", table_name, e)
                 continue
     if not dfs and SHEET_ID:
         for s in sheet_names:
@@ -56,9 +118,33 @@ def load_all_sheets():
                 df = pd.read_csv(url)
                 df["Source_Sheet"] = s
                 dfs.append(df)
-            except:
+            except Exception as e:
+                logger.debug("sheet %s not found or error: %s", s, e)
                 continue
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+    df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+    try:
+        cache_set(cache_key, df_all.to_json(orient="split"), expire=300)
+    except Exception:
+        pass
+    return df_all
+
+# ---------------- Rate limiting (very simple) ----------------
+# Minimal token-bucket per-IP in-memory limiter to avoid accidental abuse
+RATE_LIMIT = int(os.getenv("RATE_LIMIT", "60"))  # requests per minute
+rate_store = {}
+
+def check_rate_limit(ip):
+    now = int(time())
+    window = now // 60
+    key = f"{ip}:{window}"
+    count = rate_store.get(key, 0)
+    if count >= RATE_LIMIT:
+        return False
+    rate_store[key] = count + 1
+    # clean old keys occasionally (very small mem)
+    if len(rate_store) > 10000:
+        rate_store.clear()
+    return True
 
 # ---------------- Routes ----------------
 @app.route("/")
@@ -159,11 +245,38 @@ def index():
     """
     return Response(html_content, mimetype="text/html")
 
+# Health check and readiness endpoints
+@app.route("/healthz")
+def healthz():
+    status = {"ok": True}
+    try:
+        if engine:
+            # cheap DB check
+            with engine.connect() as conn:
+                conn.execute("SELECT 1")
+    except Exception as e:
+        logger.exception("DB healthcheck failed")
+        status["db"] = False
+        status["ok"] = False
+        status["error"] = str(e)
+    return jsonify(status)
+
+@app.route("/readyz")
+def readyz():
+    # Basic readiness (app dependencies)
+    ready = {"ready": True, "genai": bool(GENAI_API_KEY)}
+    return jsonify(ready)
+
 # ============================
 # BACKEND FORECAST ENDPOINT
 # ============================
 @app.route("/ask", methods=["POST"])
+@require_api_key
 def ask():
+    ip = request.remote_addr or "unknown"
+    if not check_rate_limit(ip):
+        return jsonify({"answer": "Rate limit exceeded. Try again in a minute."}), 429
+
     try:
         q = request.json.get("question", "")
         if not q:
@@ -174,21 +287,24 @@ def ask():
             return jsonify({"answer": "No forecast data available."})
 
         # Multi-sheet chart visualization
+        chart_b64 = None
         try:
             df_sample = df.groupby("Source_Sheet").head(3)
             fig = px.line(df_sample, title="AgroVista Multi-Sheet Forecast Overview", color="Source_Sheet")
             buf = io.BytesIO()
-            fig.write_image(buf, format="png")
+            # Use kaleido engine for static image export; ensures deterministic PNG
+            fig.write_image(buf, format="png", engine="kaleido")
             buf.seek(0)
             chart_b64 = base64.b64encode(buf.read()).decode("utf-8")
-        except Exception:
+        except Exception as e:
+            logger.exception("chart generation failed: %s", e)
             chart_b64 = None
 
         # Combine summaries of all sheets
         sheet_summary = ""
         for s in sheet_names:
             sheet_df = df[df["Source_Sheet"] == s].head(5)
-            sheet_summary += f"\\n--- {s} ---\\n{sheet_df.to_dict(orient='records')}\\n"
+            sheet_summary += f"\n--- {s} ---\n{sheet_df.to_dict(orient='records')}\n"
 
         # Gemini prompt
         prompt_text = f"""
@@ -200,16 +316,34 @@ def ask():
         Each section is shown as a well-formatted table. Use this data to answer the user’s query with insights and numeric reasoning
         """
 
-        model = genai.GenerativeModel("models/gemini-2.0-flash")
-        resp = model.generate_content(prompt_text)
-        answer = resp.text or "No response generated."
+        answer = "No response generated."
+        if GENAI_API_KEY:
+            try:
+                # Use smaller model if token budget is limited
+                model = genai.GenerativeModel("models/gemini-2.0-flash")
+                resp = model.generate_content(prompt_text)
+                answer = resp.text or answer
+            except Exception as e:
+                logger.exception("GenAI call failed: %s", e)
+                # graceful fallback: basic rule-based summary
+                answer = "AI temporarily unavailable; here's a short summary of available data:\n"
+                counts = df['Source_Sheet'].value_counts().to_dict()
+                answer += f"Data contains {len(df)} rows across {len(counts)} sheets. Top sheets: {counts}"
+        else:
+            # No API key; return local summary
+            answer = "GENAI_API_KEY not set. Local summary:\n"
+            counts = df['Source_Sheet'].value_counts().to_dict()
+            answer += f"Data contains {len(df)} rows across {len(counts)} sheets. Top sheets: {counts}"
+
         return jsonify({"answer": answer, "chart": chart_b64})
 
     except Exception as e:
-        return jsonify({"answer": f"Server error: {str(e)}"})
+        logger.exception("Server error in /ask: %s", e)
+        return jsonify({"answer": f"Server error: {str(e)}"}), 500
 
 # ---------------- Run ----------------
 if __name__ == "__main__":
+    # expose for gunicorn to use as `app:gunicorn_app`
     gunicorn_app = app
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
