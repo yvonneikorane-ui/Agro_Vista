@@ -1,62 +1,55 @@
+# app.py
 import os
+import io
+import base64
+import logging
+import datetime
 import pandas as pd
-from flask import Flask, request, jsonify, Response, abort
-from sqlalchemy import create_engine
+from functools import wraps
+
+from flask import Flask, request, jsonify, Response, render_template, redirect, url_for
+from flask_cors import CORS
+from sqlalchemy import create_engine, text
 import google.generativeai as genai
 import plotly.express as px
-import io, base64
-import logging
-from functools import wraps
-from time import time
+import jwt
+import stripe
+import requests
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# ---------------- Config ----------------
-DATABASE_URL = os.getenv("DATABASE_URL")  # Railway Postgres URL
-GENAI_API_KEY = os.getenv("GENAI_API_KEY")  # Your Gemini API key
-SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
-LOOKER_URL = os.getenv("LOOKER_URL")  # Looker dashboard link
-REDIS_URL = os.getenv("REDIS_URL")  # Optional Redis for caching (e.g. redis://...)
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")  # Optional header-based protection for sensitive endpoints
-MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "512"))
+# ---------------- CONFIG ----------------
+DATABASE_URL = os.getenv("DATABASE_URL")
+GENAI_API_KEY = os.getenv("GENAI_API_KEY")
+SHEET_ID = os.getenv("SHEET_ID")
+LOOKER_URL = os.getenv("LOOKER_URL")
+JWT_SECRET = os.getenv("JWT_SECRET", "supersecret-key")
+JWT_EXP_DAYS = int(os.getenv("JWT_EXP_DAYS", "7"))
+FREE_DAILY_LIMIT = int(os.getenv("FREE_DAILY_LIMIT", "10"))  # free tier daily ask limit
 
-# ---------------- Additional Production Dependencies & Setup ----------------
-# Configure Gemini client safely
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PUBLIC_KEY = os.getenv("STRIPE_PUBLIC_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
+DOMAIN = os.getenv("DOMAIN", "")  # public domain
+
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+
 if GENAI_API_KEY:
     genai.configure(api_key=GENAI_API_KEY)
 
-# SQLAlchemy engine (defer creation if no DB URL)
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+
 engine = create_engine(DATABASE_URL) if DATABASE_URL else None
 
-# Basic logging
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+app = Flask(__name__)
+CORS(app)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("agrovista")
 
-# Optional simple in-memory cache as fallback
-try:
-    # If redis is available, use it - minimal wrapper
-    if REDIS_URL:
-        import redis
-        redis_client = redis.from_url(REDIS_URL, decode_responses=True)
-    else:
-        redis_client = None
-except Exception as e:
-    logger.warning("Redis not available: %s", e)
-    redis_client = None
-
-# Simple decorator for optional API key protection on endpoints
-def require_api_key(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if ADMIN_API_KEY:
-            key = request.headers.get("x-api-key") or request.args.get("api_key")
-            if not key or key != ADMIN_API_KEY:
-                logger.warning("Unauthorized access attempt")
-                return jsonify({"error": "unauthorized"}), 401
-        return f(*args, **kwargs)
-    return decorated
-
-app = Flask(__name__)
-
-# ---------------- Forecast Sheets ----------------
+# ---------------- SHEETS ----------------
 sheet_names = [
     "youth_women_empowerment_forecast",
     "Tractor_Registry_forecast",
@@ -74,32 +67,87 @@ sheet_names = [
     "Input_Pest_Disease_Alert_Forecast"
 ]
 
-def cache_get(key):
-    try:
-        if redis_client:
-            return redis_client.get(key)
-    except Exception as e:
-        logger.debug("redis get error: %s", e)
-    return None
+# ---------------- BOOTSTRAP DB ----------------
+def bootstrap_db():
+    if not engine:
+        logger.warning("No DATABASE_URL set; skipping DB bootstrap.")
+        return
+    with engine.begin() as conn:
+        # users
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            tier TEXT DEFAULT 'free',
+            daily_requests INT DEFAULT 0,
+            last_request_date DATE
+        );
+        """))
+        # payments
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS payments (
+            id SERIAL PRIMARY KEY,
+            user_id INT REFERENCES users(id),
+            provider TEXT,
+            provider_charge_id TEXT,
+            amount INT,
+            currency TEXT,
+            status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """))
+        # usage logs
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS usage_logs (
+            id SERIAL PRIMARY KEY,
+            user_id INT REFERENCES users(id),
+            endpoint TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """))
+    logger.info("Database bootstrap complete.")
 
-def cache_set(key, value, expire=300):
-    try:
-        if redis_client:
-            redis_client.set(key, value, ex=expire)
-    except Exception as e:
-        logger.debug("redis set error: %s", e)
+bootstrap_db()
 
+# ---------------- JWT / AUTH HELPERS ----------------
+def create_token(user_id, email, role):
+    exp = datetime.datetime.utcnow() + datetime.timedelta(days=JWT_EXP_DAYS)
+    payload = {"user_id": int(user_id), "email": email, "role": role, "exp": exp}
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+def decode_token(token):
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except Exception as e:
+        logger.debug("JWT decode error: %s", e)
+        return None
+
+def auth_required(role=None):
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            auth = request.headers.get("Authorization", "")
+            token = None
+            if auth.startswith("Bearer "):
+                token = auth.replace("Bearer ", "").strip()
+            else:
+                token = request.args.get("token") or request.cookies.get("agro_token")
+            if not token:
+                return redirect(url_for('login_page'))
+            decoded = decode_token(token)
+            if not decoded:
+                return redirect(url_for('login_page'))
+            if role and decoded.get("role") != role:
+                return jsonify({"error": "Unauthorized"}), 403
+            request.user = decoded
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+# ---------------- SHEET / DATA LOADING ----------------
 def load_all_sheets():
-    """Load all forecasts from Postgres, fallback to Google Sheets if empty."""
-    cache_key = "agrovista:all_sheets_v1"
-    cached = cache_get(cache_key)
-    if cached:
-        try:
-            df = pd.read_json(cached, orient="split")
-            return df
-        except Exception:
-            pass
-
     dfs = []
     if engine:
         for s in sheet_names:
@@ -109,7 +157,7 @@ def load_all_sheets():
                 df["Source_Sheet"] = s
                 dfs.append(df)
             except Exception as e:
-                logger.debug("table %s not found or error: %s", table_name, e)
+                logger.debug("table %s not found: %s", table_name, e)
                 continue
     if not dfs and SHEET_ID:
         for s in sheet_names:
@@ -119,231 +167,261 @@ def load_all_sheets():
                 df["Source_Sheet"] = s
                 dfs.append(df)
             except Exception as e:
-                logger.debug("sheet %s not found or error: %s", s, e)
+                logger.debug("sheet %s not found: %s", s, e)
                 continue
-    df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+def increment_user_daily(user_id):
+    today = datetime.date.today()
+    with engine.begin() as conn:
+        user = conn.execute(text("SELECT daily_requests, last_request_date FROM users WHERE id=:id"), {"id": user_id}).fetchone()
+        if not user:
+            return
+        last_date = user.last_request_date
+        if not last_date or last_date != today:
+            conn.execute(text("UPDATE users SET daily_requests=1, last_request_date=:d WHERE id=:id"), {"d": today, "id": user_id})
+        else:
+            conn.execute(text("UPDATE users SET daily_requests=daily_requests+1 WHERE id=:id"), {"id": user_id})
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO usage_logs (user_id, endpoint) VALUES (:u, :e)"), {"u": user_id, "e": "/ask"})
+
+# ---------------- ERROR & HEALTH ----------------
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.exception("Unhandled error: %s", e)
+    return jsonify({"error": "Server error occurred", "details": str(e)}), 500
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+# ---------------- AUTH ROUTES ----------------
+@app.route("/register", methods=["GET", "POST"])
+def register_page():
+    if request.method == "GET":
+        return render_template("register.html")
+    data = request.json or request.form
+    email = data.get("email")
+    password = data.get("password")
+    role = data.get("role", "user")
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+    hashed = generate_password_hash(password)
     try:
-        cache_set(cache_key, df_all.to_json(orient="split"), expire=300)
-    except Exception:
-        pass
-    return df_all
-
-# ---------------- Rate limiting (very simple) ----------------
-# Minimal token-bucket per-IP in-memory limiter to avoid accidental abuse
-RATE_LIMIT = int(os.getenv("RATE_LIMIT", "60"))  # requests per minute
-rate_store = {}
-
-def check_rate_limit(ip):
-    now = int(time())
-    window = now // 60
-    key = f"{ip}:{window}"
-    count = rate_store.get(key, 0)
-    if count >= RATE_LIMIT:
-        return False
-    rate_store[key] = count + 1
-    # clean old keys occasionally (very small mem)
-    if len(rate_store) > 10000:
-        rate_store.clear()
-    return True
-
-# ---------------- Routes ----------------
-@app.route("/")
-def index():
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>AgroVista Forecast Intelligence</title>
-        <style>
-            body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #f7f9f7; color: #333; }}
-            header {{ background: linear-gradient(90deg, #2e7d32, #66bb6a); color: white; padding: 20px; text-align: center; }}
-            header h1 {{ margin: 0; font-size: 2.3em; }}
-            main {{ margin: 40px auto; max-width: 900px; text-align: center; padding: 0 15px; }}
-            .input-area {{ display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-bottom: 25px; }}
-            input#q {{ flex: 1 1 300px; padding: 12px; font-size: 1em; border-radius: 6px; border: 1px solid #ccc; min-width: 200px; }}
-            button {{ padding: 12px 20px; font-size: 1em; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px; transition: 0.3s; }}
-            button:hover {{ background-color: #388e3c; }}
-            #answer {{ margin-top: 30px; font-weight: bold; font-size: 1.1em; color: #1b5e20; line-height: 1.6em; }}
-            #chart {{ margin-top: 30px; }}
-            footer {{ text-align: center; padding: 15px; margin-top: 50px; color: #555; border-top: 1px solid #ddd; }}
-            @media (max-width: 600px) {{ header h1 {{ font-size: 1.8em; }} button {{ width: 100%; }} input#q {{ width: 100%; }} }}
-        </style>
-    </head>
-    <body>
-        <header>
-            <h1>AgroVista Forecast Intelligence</h1>
-            <p>AI-Powered Agricultural Forecasting for National Food Security</p>
-        </header>
-        <main>
-            <div class="input-area">
-                <input id="q" placeholder="Ask about yield, pests, investments, or climate...">
-                <button onclick="ask()">Ask</button>
-                <button onclick="startListening()">🎤 Speak</button>
-                <button onclick="readResponse()">🔊 Read Aloud</button>
-                <button onclick="openDashboard()">📊 Dashboard</button>
-            </div>
-            <div id="answer"></div>
-            <div id="chart"></div>
-        </main>
-        <footer>© 2025 FMAFS | AgroVista AI Platform</footer>
-
-        <script>
-        let lastAnswer = "";
-        let isReading = false;
-        let currentUtterance = null;
-
-        async function ask(){{
-            const q = document.getElementById('q').value;
-            if (!q) {{ document.getElementById('answer').innerText = "Please type a question first."; return; }}
-            const res = await fetch('/ask', {{ method:"POST", headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{question:q}}) }});
-            const data = await res.json();
-            lastAnswer = data.answer;
-            document.getElementById('answer').innerText = data.answer;
-            if (data.chart) {{
-                document.getElementById('chart').innerHTML = '<img src="data:image/png;base64,' + data.chart + '">';
-            }}
-        }}
-
-        function startListening(){{
-            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-            recognition.lang = 'en-US';
-            recognition.start();
-            recognition.onresult = function(event){{
-                document.getElementById('q').value = event.results[0][0].transcript;
-            }};
-        }}
-
-        function readResponse(){{
-            if (!lastAnswer){{
-                alert("No response available to read aloud.");
-                return;
-            }}
-            if (isReading){{
-                speechSynthesis.cancel();
-                isReading = false;
-                currentUtterance = null;
-                return;
-            }}
-            currentUtterance = new SpeechSynthesisUtterance(lastAnswer);
-            isReading = true;
-            currentUtterance.onend = () => {{ isReading = false; }};
-            speechSynthesis.speak(currentUtterance);
-        }}
-
-        function openDashboard(){{
-            const url = "{LOOKER_URL or '#'}";
-            if(url === '#'){{
-                alert("Looker dashboard link is not set.");
-                return;
-            }}
-            window.open(url, "_blank");
-        }}
-        </script>
-    </body>
-    </html>
-    """
-    return Response(html_content, mimetype="text/html")
-
-# Health check and readiness endpoints
-@app.route("/healthz")
-def healthz():
-    status = {"ok": True}
-    try:
-        if engine:
-            # cheap DB check
-            with engine.connect() as conn:
-                conn.execute("SELECT 1")
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO users (email, password, role) VALUES (:e, :p, :r)"), {"e": email, "p": hashed, "r": role})
+            user = conn.execute(text("SELECT id, email, role FROM users WHERE email=:e"), {"e": email}).fetchone()
+        token = create_token(user.id, user.email, user.role)
+        resp = redirect(url_for('app_page'))
+        resp.set_cookie('agro_token', token, httponly=True, samesite='Lax')
+        return resp
     except Exception as e:
-        logger.exception("DB healthcheck failed")
-        status["db"] = False
-        status["ok"] = False
-        status["error"] = str(e)
-    return jsonify(status)
+        logger.debug("Register error: %s", e)
+        return render_template("register.html", error="Account creation failed; email may exist."), 400
 
-@app.route("/readyz")
-def readyz():
-    # Basic readiness (app dependencies)
-    ready = {"ready": True, "genai": bool(GENAI_API_KEY)}
-    return jsonify(ready)
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if request.method == "GET":
+        return render_template("login.html")
+    data = request.json or request.form
+    email = data.get("email")
+    password = data.get("password")
+    if not email or not password:
+        return render_template("login.html", error="Email and password required"), 400
+    with engine.begin() as conn:
+        user = conn.execute(text("SELECT id, email, password, role FROM users WHERE email=:e"), {"e": email}).fetchone()
+    if not user or not check_password_hash(user.password, password):
+        return render_template("login.html", error="Invalid login"), 401
+    token = create_token(user.id, user.email, user.role)
+    resp = redirect(url_for('app_page'))
+    resp.set_cookie('agro_token', token, httponly=True, samesite='Lax')
+    return resp
 
-# ============================
-# BACKEND FORECAST ENDPOINT
-# ============================
+@app.route("/logout")
+def logout():
+    resp = redirect(url_for('login_page'))
+    resp.delete_cookie('agro_token')
+    return resp
+
+# ---------------- ADMIN DASHBOARD ----------------
+@app.route("/admin/dashboard")
+@auth_required(role="admin")
+def admin_dashboard():
+    users_list = []
+    payments_list = []
+    with engine.begin() as conn:
+        users = conn.execute(text("SELECT id, email, role, tier, daily_requests, last_request_date FROM users")).fetchall()
+        payments = conn.execute(text("SELECT * FROM payments ORDER BY created_at DESC")).fetchall()
+    for u in users:
+        users_list.append(dict(u))
+    for p in payments:
+        payments_list.append(dict(p))
+    return render_template("admin_dashboard.html", users=users_list, payments=payments_list)
+
+# ---------------- STRIPE & PAYSTACK ----------------
+@app.route("/create_checkout_session", methods=["POST"])
+@auth_required()
+def create_checkout_session():
+    data = request.json or request.form
+    amount = data.get("amount")
+    provider = data.get("provider", "stripe")
+    user_id = request.user["user_id"]
+    user_email = request.user["email"]
+
+    if provider == "stripe":
+        if not STRIPE_SECRET_KEY:
+            return jsonify({"error": "Stripe not configured"}), 500
+        try:
+            session = stripe.checkout.Session.create(
+                payment_method_types=["card"],
+                customer_email=user_email,
+                line_items=[{"price_data": {"currency": "ngn", "unit_amount": int(amount), "product_data": {"name": "AgroVista PRO Upgrade"}}, "quantity": 1}],
+                mode="payment",
+                success_url=(DOMAIN or request.host_url) + "payment_success?session_id={CHECKOUT_SESSION_ID}",
+                cancel_url=(DOMAIN or request.host_url) + "payment_cancelled"
+            )
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    INSERT INTO payments (user_id, provider, provider_charge_id, amount, currency, status)
+                    VALUES (:u, 'stripe', :pc, :a, 'NGN', 'pending')
+                """), {"u": user_id, "pc": session.id, "a": amount})
+            return jsonify({"checkout_url": session.url, "session_id": session.id})
+        except Exception as e:
+            logger.exception("Stripe checkout failed")
+            return jsonify({"error": str(e)}), 500
+    elif provider == "paystack":
+        if not PAYSTACK_SECRET_KEY:
+            return jsonify({"error": "Paystack not configured"}), 500
+        headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
+        payload = {"email": user_email, "amount": int(amount), "currency": "NGN", "callback_url": f"{DOMAIN or request.host_url}payment_success"}
+        try:
+            res = requests.post("https://api.paystack.co/transaction/initialize", headers=headers, json=payload)
+            data = res.json()
+            if data.get("status"):
+                ref = data["data"]["reference"]
+                with engine.begin() as conn:
+                    conn.execute(text("""
+                        INSERT INTO payments (user_id, provider, provider_charge_id, amount, currency, status)
+                        VALUES (:u, 'paystack', :ref, :a, 'NGN', 'pending')
+                    """), {"u": user_id, "ref": ref, "a": amount})
+                return jsonify({"checkout_url": data["data"]["authorization_url"], "reference": ref})
+            else:
+                return jsonify({"error": data.get("message", "Paystack error")}), 400
+        except Exception as e:
+            logger.exception("Paystack checkout failed")
+            return jsonify({"error": str(e)}), 500
+    else:
+        return jsonify({"error": "Invalid payment provider"}), 400
+
+# ---------------- PROTECTED APP PAGE ----------------
+@app.route("/app", methods=["GET"])
+@auth_required()
+def app_page():
+    LOOKER = LOOKER_URL or "#"
+    token = request.cookies.get('agro_token') or ''
+    # Fetch user tier + remaining free requests
+    user_id = request.user["user_id"]
+    daily_used = 0
+    tier = "free"
+    with engine.begin() as conn:
+        user = conn.execute(text("SELECT tier, daily_requests, last_request_date FROM users WHERE id=:id"), {"id": user_id}).fetchone()
+        if user:
+            tier = user.tier
+            if user.last_request_date != datetime.date.today():
+                daily_used = 0
+            else:
+                daily_used = user.daily_requests or 0
+    remaining_free = max(FREE_DAILY_LIMIT - daily_used, 0)
+    return render_template("app.html", looker_url=LOOKER, token=token, tier=tier, remaining_free=remaining_free)
+
+# ---------------- ASK ENDPOINT ----------------
 @app.route("/ask", methods=["POST"])
-@require_api_key
+@auth_required()
 def ask():
-    ip = request.remote_addr or "unknown"
-    if not check_rate_limit(ip):
-        return jsonify({"answer": "Rate limit exceeded. Try again in a minute."}), 429
-
     try:
-        q = request.json.get("question", "")
+        q = request.json.get("question", "").strip()
         if not q:
-            return jsonify({"answer": "Please ask a question."})
+            return jsonify({"answer": "Please ask a question."}), 400
+
+        user_id = request.user["user_id"]
+        with engine.begin() as conn:
+            user = conn.execute(text("SELECT id, email, role, tier, daily_requests, last_request_date FROM users WHERE id=:id"), {"id": user_id}).fetchone()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        today = datetime.date.today()
+        if user.tier == "free":
+            last = user.last_request_date
+            if not last or last != today:
+                with engine.begin() as conn:
+                    conn.execute(text("UPDATE users SET daily_requests=0, last_request_date=:d WHERE id=:id"), {"d": today, "id": user_id})
+                daily_used = 0
+            else:
+                daily_used = user.daily_requests or 0
+            if daily_used >= FREE_DAILY_LIMIT:
+                return jsonify({"error": "Free limit reached. Upgrade to PRO"}), 403
+            increment_user_daily(user_id)
 
         df = load_all_sheets()
         if df.empty:
-            return jsonify({"answer": "No forecast data available."})
+            return jsonify({"answer": "No forecast data available."}), 200
 
-        # Multi-sheet chart visualization
         chart_b64 = None
         try:
             df_sample = df.groupby("Source_Sheet").head(3)
             fig = px.line(df_sample, title="AgroVista Multi-Sheet Forecast Overview", color="Source_Sheet")
             buf = io.BytesIO()
-            # Use kaleido engine for static image export; ensures deterministic PNG
-            fig.write_image(buf, format="png", engine="kaleido")
+            fig.write_image(buf, format="png")
             buf.seek(0)
             chart_b64 = base64.b64encode(buf.read()).decode("utf-8")
         except Exception as e:
-            logger.exception("chart generation failed: %s", e)
+            logger.debug("Chart generation failed: %s", e)
             chart_b64 = None
 
-        # Combine summaries of all sheets
         sheet_summary = ""
         for s in sheet_names:
             sheet_df = df[df["Source_Sheet"] == s].head(5)
             sheet_summary += f"\n--- {s} ---\n{sheet_df.to_dict(orient='records')}\n"
 
-        # Gemini prompt
         prompt_text = f"""
-        You are an agricultural AI analyst for the Nigerian Ministry of Agriculture.
-        Here are 14 forecast datasets from national systems (youth, tractors, climate, yield, etc.):
+        You are an agricultural AI analyst for Nigeria.
+        Here are datasets from national systems:
         {sheet_summary}
-        Based on this combined data, answer this user query: '{q}'
-        Provide insightful, data-informed forecasts and recommendations.
-        Each section is shown as a well-formatted table. Use this data to answer the user’s query with insights and numeric reasoning
+        Question: '{q}'
+        Provide numeric, data-driven insights.
         """
-
         answer = "No response generated."
         if GENAI_API_KEY:
             try:
-                # Use smaller model if token budget is limited
                 model = genai.GenerativeModel("models/gemini-2.0-flash")
                 resp = model.generate_content(prompt_text)
                 answer = resp.text or answer
             except Exception as e:
-                logger.exception("GenAI call failed: %s", e)
-                # graceful fallback: basic rule-based summary
-                answer = "AI temporarily unavailable; here's a short summary of available data:\n"
+                logger.exception("GenAI call failed")
+                answer = "AI unavailable; showing local data summary."
                 counts = df['Source_Sheet'].value_counts().to_dict()
-                answer += f"Data contains {len(df)} rows across {len(counts)} sheets. Top sheets: {counts}"
+                answer += f" Data rows: {len(df)}; sheets: {len(counts)}; top_sheets: {counts}"
         else:
-            # No API key; return local summary
-            answer = "GENAI_API_KEY not set. Local summary:\n"
             counts = df['Source_Sheet'].value_counts().to_dict()
-            answer += f"Data contains {len(df)} rows across {len(counts)} sheets. Top sheets: {counts}"
-
+            answer = f"GENAI_API_KEY not set. Local summary: rows={len(df)}, sheets={len(counts)}"
         return jsonify({"answer": answer, "chart": chart_b64})
-
     except Exception as e:
         logger.exception("Server error in /ask: %s", e)
         return jsonify({"answer": f"Server error: {str(e)}"}), 500
 
-# ---------------- Run ----------------
+# ---------------- CSV UPLOAD (admin only) ----------------
+@app.route("/api/upload", methods=["POST"])
+@auth_required(role="admin")
+def upload_csv():
+    file = request.files.get("file")
+    sheet = request.form.get("sheet")
+    if not file or not sheet:
+        return jsonify({"error": "Missing file or sheet"}), 400
+    df = pd.read_csv(file)
+    df.to_sql(sheet.lower(), engine, if_exists="replace", index=False)
+    return jsonify({"message": f"{sheet} updated"}), 200
+
+# ---------------- RUN ----------------
 if __name__ == "__main__":
-    # expose for gunicorn to use as `app:gunicorn_app`
-    gunicorn_app = app
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
