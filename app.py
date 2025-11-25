@@ -11,9 +11,9 @@ from time import time
 
 # ---------------- Config ----------------
 DATABASE_URL = os.getenv("DATABASE_URL")  # Railway Postgres URL
-GENAI_API_KEY = os.getenv("GENAI_API_KEY")  # Your Gemini API key
-SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
-LOOKER_URL = os.getenv("LOOKER_URL")  # Looker dashboard link
+GENAI_API_KEY = os.getenv("AIzaSyBRFdxiMvOSGraVMX-Dh8GcZrOGdz6DcGc")  # Your Gemini API key
+SHEET_ID = os.getenv("https://docs.google.com/spreadsheets/d/1e_ZMrZ_16K60iFRfDtUVHs4AjmvXiLM0v4haoOrfsbM/edit?usp=sharing")  # Optional Google Sheets fallback
+LOOKER_URL = os.getenv("https://lookerstudio.google.com/reporting/0e5d4dbd-a935-4461-b9ac-9c7f06c37f63")  # Looker dashboard link
 REDIS_URL = os.getenv("REDIS_URL")  # Optional Redis for caching (e.g. redis://...)
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")  # Optional header-based protection for sensitive endpoints
 MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "512"))
