@@ -11,7 +11,7 @@ from time import time
 
 # ---------------- Config ----------------
 # Use the Railway env var if set, otherwise fall back to the public URL you tested in Colab
-DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://postgres:zXIZJfkngAsqkHAdVpOGsRwgBybwryRc@shinkansen.proxy.rlwy.net:13515/railway"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Fix: clean GENAI key line (removed stray words)
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
