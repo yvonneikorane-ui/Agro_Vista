@@ -24,7 +24,7 @@ if GENAI_API_KEY:
     genai.configure(api_key=GENAI_API_KEY)
 
 # SQLAlchemy engine (defer creation if no DB URL)
-engine = create_engine(DATABASE_URL) if DATABASE_URL else None
+engine = create_engine(postgresql://postgres:zXIZJfkngAsqkHAdVpOGsRwgBybwryRc@shinkansen.proxy.rlwy.net:5432/railway) if DATABASE_URL else None
 
 # Basic logging
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
