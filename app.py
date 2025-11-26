@@ -10,7 +10,7 @@ from functools import wraps
 from time import time
 
 # ---------------- Config ----------------
-DATABASE_URL = os.getenv("postgresql://postgres:zXIZJfkngAsqkHAdVpOGsRwgBybwryRc@shinkansen.proxy.rlwy.net:5432/railway")  # Railway Postgres URL
+DATABASE_URL = os.getenv("postgresql://postgres:zXIZJfkngAsqkHAdVpOGsRwgBybwryRc@shinkansen.proxy.rlwy.net:48644/railway")  # Railway Postgres URL
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY")  # Your Gemini API key
 SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
 LOOKER_URL = os.getenv("LOOKER_URL")  # Looker dashboard link
@@ -24,7 +24,7 @@ if GENAI_API_KEY:
     genai.configure(api_key=GENAI_API_KEY)
 
 # SQLAlchemy engine (defer creation if no DB URL)
-engine = create_engine(postgresql://postgres:zXIZJfkngAsqkHAdVpOGsRwgBybwryRc@shinkansen.proxy.rlwy.net:5432/railway) if DATABASE_URL else None
+engine = create_engine(postgresql://postgres:zXIZJfkngAsqkHAdVpOGsRwgBybwryRc@shinkansen.proxy.rlwy.net:48644/railway) if DATABASE_URL else None
 
 # Basic logging
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
