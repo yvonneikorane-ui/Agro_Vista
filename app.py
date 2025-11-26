@@ -10,7 +10,7 @@ from functools import wraps
 from time import time
 
 # ---------------- Config ----------------
-DATABASE_URL = os.getenv("DATABASE_URL")  # Railway Postgres URL
+DATABASE_URL = os.getenv("postgresql://postgres:zXIZJfkngAsqkHAdVpOGsRwgBybwryRc@shinkansen.proxy.rlwy.net:5432/railway")  # Railway Postgres URL
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY")  # Your Gemini API key
 SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
 LOOKER_URL = os.getenv("LOOKER_URL")  # Looker dashboard link
