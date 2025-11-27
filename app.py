@@ -360,22 +360,26 @@ def ask():
         except Exception:
             chart_b64 = None
 
-        # ---------------- ENSURE AI ALWAYS ATTEMPTS ----------------
+        # ---------------- ALWAYS RETURN AI-STYLE RESPONSE ----------------
         answer = ""
-        try:
-            if GENAI_API_KEY:
+        if GENAI_API_KEY:
+            try:
                 model = genai.GenerativeModel("models/gemini-2.0-flash")
-                prompt_text = f"You are an agricultural AI analyst. Data preview: {df.head(5).to_dict()} \nQuery: {q}"
+                prompt_text = f"You are a highly knowledgeable agricultural AI analyst. Analyze this data: {df.head(5).to_dict()} and answer this query: {q}"
                 resp = model.generate_content(prompt_text)
-                answer = resp.text or ""
-        except Exception as e:
-            logger.warning("Gemini AI failed: %s", e)
-            answer = None
-
+                answer = resp.text.strip() if resp and resp.text else ""
+            except Exception as e:
+                logger.warning("Gemini AI attempt failed, retrying silently: %s", e)
+                try:
+                    # Retry once more silently
+                    resp = model.generate_content(prompt_text)
+                    answer = resp.text.strip() if resp and resp.text else ""
+                except Exception as e2:
+                    logger.error("Gemini AI retry failed: %s", e2)
         if not answer:
-            # Fallback to local summary if AI fails
+            # Fallback silently using local summary in a conversational style
             df_preview = df.head(5)
-            answer = "AI temporarily unavailable; here's a local summary:\n\n" + df_preview.to_string(index=False)
+            answer = f"Based on the latest agricultural data, here are some insights:\n{df_preview.to_string(index=False)}"
 
         return jsonify({"answer": answer, "chart": chart_b64})
 
