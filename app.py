@@ -226,7 +226,6 @@ def logout():
 @app.route("/")
 @require_login
 def index():
-    # MAIN UI/UX PAGE HTML
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -267,12 +266,10 @@ def index():
             <a href="/logout" class="logout-link">Logout</a>
         </main>
         <footer>© 2025 FMAFS | AgroVista AI Platform</footer>
-
         <script>
         let lastAnswer = "";
         let isReading = false;
         let currentUtterance = null;
-
         async function ask(){{
             const q = document.getElementById('q').value;
             if (!q) {{ document.getElementById('answer').innerText = "Please type a question first."; return; }}
@@ -292,7 +289,6 @@ def index():
                 document.getElementById('answer').innerText = "Error querying forecast.";
             }}
         }}
-
         function startListening(){{
             const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
             recognition.lang = 'en-US';
@@ -301,7 +297,6 @@ def index():
                 document.getElementById('q').value = event.results[0][0].transcript;
             }};
         }}
-
         function readResponse(){{
             if (!lastAnswer){{
                 alert("No response available to read aloud.");
@@ -318,7 +313,6 @@ def index():
             currentUtterance.onend = () => {{ isReading = false; }};
             speechSynthesis.speak(currentUtterance);
         }}
-
         function openDashboard(){{
             const url = "{LOOKER_URL or '#'}";
             if(url === '#'){{
@@ -366,17 +360,21 @@ def ask():
         except Exception:
             chart_b64 = None
 
-        answer = "No response generated."
-        if GENAI_API_KEY:
-            try:
+        # ---------------- FIXED AI / LOCAL FALLBACK ----------------
+        answer = ""
+        try:
+            if GENAI_API_KEY:
                 model = genai.GenerativeModel("models/gemini-2.0-flash")
                 prompt_text = f"You are an agricultural AI analyst. Data preview: {df.head(5).to_dict()} \nQuery: {q}"
                 resp = model.generate_content(prompt_text)
-                answer = resp.text or answer
-            except Exception:
-                answer = "AI temporarily unavailable; here's a local summary."
-        else:
-            answer = f"GENAI_API_KEY not set; rows: {len(df)}"
+                answer = resp.text or ""
+        except Exception:
+            answer = None
+
+        if not answer:
+            # Fallback: provide local summary
+            df_preview = df.head(5)
+            answer = "AI temporarily unavailable; here's a local summary:\n\n" + df_preview.to_string(index=False)
 
         return jsonify({"answer": answer, "chart": chart_b64})
 
