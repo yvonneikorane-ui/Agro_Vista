@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AgroVista Forecast Intelligence</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header>
+    <h1>AgroVista Forecast Intelligence</h1>
+    <p>AI-Powered Agricultural Forecasting for National Food Security</p>
+    <button onclick="openLogin()">🔑 Login</button>
+</header>
+
+<main>
+    <div class="input-area">
+        <input id="q" placeholder="Ask about yield, pests, investments, or climate...">
+        <button onclick="ask()">Ask</button>
+        <button onclick="startListening()">🎤 Speak</button>
+        <button onclick="readResponse()">🔊 Read Aloud</button>
+        <button onclick="openDashboard()">📊 Dashboard</button>
+    </div>
+    <div id="answer"></div>
+    <div id="chart"></div>
+</main>
+
+<footer>© 2025 FMAFS | AgroVista AI Platform</footer>
+
+<script src="{{ url_for('static', filename='js/login.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
