@@ -4,14 +4,29 @@
 <meta charset="UTF-8">
 <title>Admin Login</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 60px; }
+    .login-container { width: 350px; margin: auto; padding: 30px; border-radius: 10px; background: #ffffff; box-shadow: 0 0 15px rgba(0,0,0,0.1); }
+    input { padding: 12px; width: 90%; margin: 15px 0; border-radius: 6px; border: 1px solid #ccc; }
+    button { padding: 12px 20px; width: 95%; background:#4CAF50; color:white; border:none; border-radius: 6px; cursor:pointer; font-size:16px; }
+    button:hover { opacity:0.9; }
+</style>
 </head>
+
 <body>
+
 <main class="login-container">
     <h2>Admin Login</h2>
+    <p>Enter your ADMIN_API_KEY to continue</p>
+
     <input type="password" id="apiKey" placeholder="Enter API Key">
-    <button onclick="login()">Login</button>
+
+    <button onclick="saveApiKey()">Login</button>
+
     <p id="loginError" style="color:red;"></p>
 </main>
-<script src="{{ url_for('static', filename='js/login.js') }}"></script>
+
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+
 </body>
 </html>
