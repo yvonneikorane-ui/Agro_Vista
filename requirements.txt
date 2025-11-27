@@ -15,4 +15,4 @@ kaleido
 stripe
 PyJWT
 Werkzeug
-
+redis
