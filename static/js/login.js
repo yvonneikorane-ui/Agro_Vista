@@ -1,24 +1,32 @@
-function login(){
+// Login page
+function login() {
     const key = document.getElementById('apiKey').value;
-    if(!key){
+    if (!key) {
         document.getElementById('loginError').innerText = "API Key required!";
         return;
     }
+    // Store API key in localStorage
     localStorage.setItem('ADMIN_API_KEY', key);
-    window.location.href = '/';
+    // Redirect to production UI page
+    window.location.href = 'https://agrovista-production-3274.up.railway.app/';
 }
 
-function getApiKey(){
+// Get stored API key
+function getApiKey() {
     return localStorage.getItem('ADMIN_API_KEY') || '';
 }
 
-function logout(){
+// Logout function
+function logout() {
     localStorage.removeItem('ADMIN_API_KEY');
-    window.location.href = '/login';
+    // Redirect back to production UI page
+    window.location.href = 'https://agrovista-production-3274.up.railway.app/';
 }
 
-function requireLogin(){
-    if(!getApiKey()){
+// Ensure login for protected pages
+function requireLogin() {
+    if (!getApiKey()) {
         window.location.href = '/login';
     }
 }
+
