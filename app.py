@@ -30,6 +30,7 @@ RATE_LIMIT = int(os.getenv("RATE_LIMIT", "60"))
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "change_this_secret")
 
+# Logging
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("agrovista")
 
@@ -136,53 +137,35 @@ def load_all_sheets():
     if cached:
         try:
             df = pd.read_json(cached, orient="split")
-            logger.info("Loaded all sheets from cache.")
             return df
         except Exception:
             pass
     if not engine:
         logger.warning("No DB engine configured")
         return pd.DataFrame()
-    
     dfs = []
-    
     def safe_select(conn, candidate):
-        # Try exact, lower, and schema-prefixed table
-        variants = [
-            f'SELECT * FROM "{candidate}" LIMIT 10000',
-            f'SELECT * FROM "{candidate.lower()}" LIMIT 10000',
-            f'SELECT * FROM public."{candidate}" LIMIT 10000',
-            f'SELECT * FROM public."{candidate.lower()}" LIMIT 10000'
-        ]
+        variants = [f'SELECT * FROM "{candidate}" LIMIT 10000',
+                    f'SELECT * FROM "{candidate.lower()}" LIMIT 10000',
+                    f'SELECT * FROM {candidate.lower()} LIMIT 10000']
         for q in variants:
             try:
                 df = pd.read_sql(text(q), conn)
-                if not df.empty:
-                    logger.info(f"Loaded table: {candidate} (query: {q})")
                 return df
-            except Exception as e:
-                logger.debug(f"Failed query: {q}, error: {e}")
+            except Exception:
                 continue
-        logger.warning(f"No data found for table: {candidate}")
-        return pd.DataFrame()  # always return empty df if nothing
-    
+        return None
     with engine.connect() as conn:
         for s in sheet_names:
             df = safe_select(conn, s)
             if isinstance(df, pd.DataFrame):
-                if not df.empty:
-                    df["Source_Sheet"] = s
-                    dfs.append(df)
-    
+                df["Source_Sheet"] = s
+                dfs.append(df)
     df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-    
-    if not df_all.empty:
-        try:
-            cache_set(cache_key, df_all.to_json(orient="split"), expire=300)
-        except Exception:
-            pass
-    
-    logger.info(f"Total rows loaded across all sheets: {len(df_all)}")
+    try:
+        cache_set(cache_key, df_all.to_json(orient="split"), expire=300)
+    except Exception:
+        pass
     return df_all
 
 # ---------------- LOGIN ----------------
@@ -200,7 +183,35 @@ def login():
                     "<h3>Login Failed. Invalid username or password.</h3>"
                     '<a href="/login">Try again</a>', mimetype="text/html"
                 )
-        login_html = """ ... """  # keep your original login HTML here
+        # LOGIN PAGE HTML WITH LOGOUT BUTTON
+        login_html = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>Login - AgroVista</title>
+            <style>
+                body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .login-box { background: white; padding: 40px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); width: 300px; text-align: center; }
+                input { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #ccc; }
+                button { padding: 10px 20px; width: 100%; border: none; border-radius: 5px; background: #4CAF50; color: white; cursor: pointer; }
+                button:hover { background: #388e3c; }
+                .logout-btn { margin-top: 10px; background: #f44336; }
+                .logout-btn:hover { background: #d32f2f; }
+            </style>
+        </head>
+        <body>
+            <div class="login-box">
+                <h2>Login</h2>
+                <form method="POST">
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <button type="submit">Login</button>
+                </form>
+            </div>
+        </body>
+        </html>
+        """
         return Response(login_html, mimetype="text/html")
     except Exception as e:
         return jsonify({"error": f"Failed to load login page: {str(e)}"}), 500
@@ -215,7 +226,111 @@ def logout():
 @app.route("/")
 @require_login
 def index():
-    html_content = f""" ... """  # keep your original index HTML
+    # MAIN UI/UX PAGE HTML
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>AgroVista Forecast Intelligence</title>
+        <style>
+            body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #f7f9f7; color: #333; }}
+            header {{ background: linear-gradient(90deg, #2e7d32, #66bb6a); color: white; padding: 20px; text-align: center; }}
+            header h1 {{ margin: 0; font-size: 2.3em; }}
+            main {{ margin: 40px auto; max-width: 900px; text-align: center; padding: 0 15px; }}
+            .input-area {{ display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-bottom: 25px; }}
+            input#q {{ flex: 1 1 300px; padding: 12px; font-size: 1em; border-radius: 6px; border: 1px solid #ccc; min-width: 200px; }}
+            button {{ padding: 12px 20px; font-size: 1em; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px; transition: 0.3s; }}
+            button:hover {{ background-color: #388e3c; }}
+            #answer {{ margin-top: 30px; font-weight: bold; font-size: 1.1em; color: #1b5e20; line-height: 1.6em; }}
+            #chart {{ margin-top: 30px; }}
+            footer {{ text-align: center; padding: 15px; margin-top: 50px; color: #555; border-top: 1px solid #ddd; }}
+            .logout-link {{ display:block; margin-top:15px; color:#f44336; text-decoration:none; font-weight:bold; }}
+            @media (max-width: 600px) {{ header h1 {{ font-size: 1.8em; }} button {{ width: 100%; }} input#q {{ width: 100%; }} }}
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>AgroVista Forecast Intelligence</h1>
+            <p>Welcome, {session.get('username')}</p>
+        </header>
+        <main>
+            <div class="input-area">
+                <input id="q" placeholder="Ask about yield, pests, investments, or climate...">
+                <button onclick="ask()">Ask</button>
+                <button onclick="startListening()">🎤 Speak</button>
+                <button onclick="readResponse()">🔊 Read Aloud</button>
+                <button onclick="openDashboard()">📊 Dashboard</button>
+            </div>
+            <div id="answer"></div>
+            <div id="chart"></div>
+            <a href="/logout" class="logout-link">Logout</a>
+        </main>
+        <footer>© 2025 FMAFS | AgroVista AI Platform</footer>
+
+        <script>
+        let lastAnswer = "";
+        let isReading = false;
+        let currentUtterance = null;
+
+        async function ask(){{
+            const q = document.getElementById('q').value;
+            if (!q) {{ document.getElementById('answer').innerText = "Please type a question first."; return; }}
+            try {{
+                const res = await fetch('/ask', {{
+                    method:"POST",
+                    headers:{{'Content-Type':'application/json'}},
+                    body: JSON.stringify({{question:q}})
+                }});
+                const data = await res.json();
+                lastAnswer = data.answer;
+                document.getElementById('answer').innerText = data.answer;
+                if (data.chart) {{
+                    document.getElementById('chart').innerHTML = '<img src="data:image/png;base64,' + data.chart + '">';
+                }}
+            }} catch(err) {{
+                document.getElementById('answer').innerText = "Error querying forecast.";
+            }}
+        }}
+
+        function startListening(){{
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.start();
+            recognition.onresult = function(event){{
+                document.getElementById('q').value = event.results[0][0].transcript;
+            }};
+        }}
+
+        function readResponse(){{
+            if (!lastAnswer){{
+                alert("No response available to read aloud.");
+                return;
+            }}
+            if (isReading){{
+                speechSynthesis.cancel();
+                isReading = false;
+                currentUtterance = null;
+                return;
+            }}
+            currentUtterance = new SpeechSynthesisUtterance(lastAnswer);
+            isReading = true;
+            currentUtterance.onend = () => {{ isReading = false; }};
+            speechSynthesis.speak(currentUtterance);
+        }}
+
+        function openDashboard(){{
+            const url = "{LOOKER_URL or '#'}";
+            if(url === '#'){{
+                alert("Looker dashboard link is not set.");
+                return;
+            }}
+            window.open(url, "_blank");
+        }}
+        </script>
+    </body>
+    </html>
+    """
     return Response(html_content, mimetype="text/html")
 
 # ---------------- ASK ----------------
@@ -229,11 +344,10 @@ def ask():
         q = request.json.get("question", "")
         if not q:
             return jsonify({"answer": "Please ask a question."})
-        
         df = load_all_sheets()
         if df.empty:
             return jsonify({"answer": "No forecast data available.", "db_connected": bool(engine)})
-        
+
         chart_b64 = None
         try:
             df_sample = df.groupby("Source_Sheet").head(3).reset_index(drop=True)
@@ -249,10 +363,9 @@ def ask():
             fig.write_image(buf, format="png", engine="kaleido")
             buf.seek(0)
             chart_b64 = base64.b64encode(buf.read()).decode("utf-8")
-        except Exception as e:
-            logger.warning(f"Chart generation failed: {e}")
+        except Exception:
             chart_b64 = None
-        
+
         answer = "No response generated."
         if GENAI_API_KEY:
             try:
@@ -260,13 +373,13 @@ def ask():
                 prompt_text = f"You are an agricultural AI analyst. Data preview: {df.head(5).to_dict()} \nQuery: {q}"
                 resp = model.generate_content(prompt_text)
                 answer = resp.text or answer
-            except Exception as e:
-                logger.warning(f"Gemini AI error: {e}")
+            except Exception:
                 answer = "AI temporarily unavailable; here's a local summary."
         else:
             answer = f"GENAI_API_KEY not set; rows: {len(df)}"
-        
+
         return jsonify({"answer": answer, "chart": chart_b64})
+
     except Exception as e:
         logger.exception("Error in /ask: %s", e)
         return jsonify({"answer": f"Server error: {str(e)}"}), 500
