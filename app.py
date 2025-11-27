@@ -231,6 +231,18 @@ def index():
     html_content = f"<h2>Welcome {session.get('username')}</h2><p>AgroVista Forecast Dashboard</p>"
     return Response(html_content, mimetype="text/html")
 
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+# INSERTED HERE — Admin + User dashboard routes
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+@app.route("/admin_dashboard")
+def admin_dashboard():
+    return index()
+
+@app.route("/user_dashboard")
+def user_dashboard():
+    return index()
+
 # ---------------- HEALTH ----------------
 @app.route("/healthz")
 def healthz():
