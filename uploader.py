@@ -6,8 +6,7 @@ from sqlalchemy import create_engine
 # === DATABASE URL ===
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    # fallback for local testing
-    DATABASE_URL = "postgresql://user:password@host:5432/dbname"
+    DATABASE_URL = "postgresql://postgres:password@localhost:5432/railway"
 
 # === FOLDER PATH ===
 FORECAST_FOLDER = os.path.join(os.path.dirname(__file__), "forecasts")
@@ -18,7 +17,8 @@ def upload_csv_to_postgres(file_path, engine):
     try:
         df = pd.read_csv(file_path)
         df.columns = [c.strip().replace(" ", "_").lower() for c in df.columns]
-        df.to_sql(file_name.lower(), engine, if_exists="replace", index=False)
+        # append mode (create if not exists)
+        df.to_sql(file_name.lower(), engine, if_exists="append", index=False)
         print(f"✅ Uploaded {file_name} ({len(df)} rows)")
     except Exception as e:
         print(f"❌ Failed to upload {file_name}: {e}")
@@ -41,4 +41,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
