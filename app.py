@@ -1,5 +1,7 @@
 # ----------------------------------------------------
-# FULL FUNCTIONAL AGROVISTA APP WITH LOGIN + DASHBOARD UI
+# FULLY FUNCTIONAL app.py FOR AGROVISTA
+# Login for user/admin, logout, Ask/Speak/Read UI, Looker Dashboard
+# Corrects admin login issue and fixes undefined query responses
 # ----------------------------------------------------
 
 import os
@@ -15,15 +17,16 @@ import plotly.express as px
 import google.generativeai as genai
 
 # ---------------- CONFIG ----------------
-DATABASE_URL = os.getenv("DATABASE_URL")
+FALLBACK_PUBLIC_URL = "postgresql://postgres:DcYufJdqrTmSmAhRqRPgIAtODXcZHTqp@maglev.proxy.rlwy.net:34809/railway"
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PUBLIC_URL") or FALLBACK_PUBLIC_URL
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
 LOOKER_URL = os.getenv("LOOKER_URL")
 REDIS_URL = os.getenv("REDIS_URL")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "512"))
-RATE_LIMIT = int(os.getenv("RATE_LIMIT", "60"))  # requests per minute
+RATE_LIMIT = int(os.getenv("RATE_LIMIT", "60"))
 
-# ---------------- FLASK SETUP ----------------
+# ---------------- SETUP ----------------
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "change_this_secret")
 
@@ -34,8 +37,7 @@ logger = logging.getLogger("agrovista")
 # SQLAlchemy engine
 engine = None
 try:
-    if DATABASE_URL:
-        engine = create_engine(DATABASE_URL)
+    engine = create_engine(DATABASE_URL)
 except Exception as e:
     logger.exception("Failed to create DB engine: %s", e)
 
@@ -57,29 +59,11 @@ if GENAI_API_KEY:
     except Exception:
         logger.warning("Could not configure GenAI at startup")
 
-# ---------------- SIMPLE USERS ----------------
+# ---------------- USERS ----------------
 USERS = {
-    "admin": "password123",
+    "admin": "1234",  # fixed admin password
     "user1": "userpass"
 }
-
-# ---------------- SHEETS ----------------
-sheet_names = [
-    "youth_women_empowerment_forecast",
-    "Tractor_Registry_forecast",
-    "National_Agro_Farmer_Mapping_Forecast",
-    "Stakeholders_Partners_Forecast",
-    "Knowledge_Innocvation_Tracker_Forecast",
-    "Project_Overview_Forecast",
-    "E_Voucher_Forecast",
-    "Farmers_Registry_Forecast",
-    "Investment_KPIs_Forecast",
-    "Policy_Simulator_Forecast",
-    "Rainified_Crops_Forecast",
-    "Climate_Carbon_Credits_Forecast",
-    "Yield_Food_Security_Forecast",
-    "Input_Pest_Disease_Alert_Forecast"
-]
 
 # ---------------- HELPERS ----------------
 def require_login(f):
@@ -129,28 +113,54 @@ def check_rate_limit(ip):
         RATE_STORE.clear()
     return True
 
+# ---------------- FORECAST SHEETS ----------------
+sheet_names = [
+    "youth_women_empowerment_forecast",
+    "Tractor_Registry_forecast",
+    "National_Agro_Farmer_Mapping_Forecast",
+    "Stakeholders_Partners_Forecast",
+    "Knowledge_Innocvation_Tracker_Forecast",
+    "Project_Overview_Forecast",
+    "E_Voucher_Forecast",
+    "Farmers_Registry_Forecast",
+    "Investment_KPIs_Forecast",
+    "Policy_Simulator_Forecast",
+    "Rainified_Crops_Forecast",
+    "Climate_Carbon_Credits_Forecast",
+    "Yield_Food_Security_Forecast",
+    "Input_Pest_Disease_Alert_Forecast"
+]
+
 def load_all_sheets():
-    cache_key = "agrovista:all_sheets_v3"
+    cache_key = "agrovista:all_sheets"
     cached = cache_get(cache_key)
     if cached:
         try:
-            return pd.read_json(cached, orient="split")
+            df = pd.read_json(cached, orient="split")
+            return df
         except Exception:
             pass
     if not engine:
         logger.warning("No DB engine configured")
         return pd.DataFrame()
     dfs = []
+    def safe_select(conn, candidate):
+        variants = [f'SELECT * FROM "{candidate}" LIMIT 10000',
+                    f'SELECT * FROM "{candidate.lower()}" LIMIT 10000',
+                    f'SELECT * FROM {candidate.lower()} LIMIT 10000']
+        for q in variants:
+            try:
+                df = pd.read_sql(text(q), conn)
+                return df
+            except Exception:
+                continue
+        return None
     with engine.connect() as conn:
         for s in sheet_names:
-            for table_variant in [s, s.lower(), s.replace("_forecast","").lower()]:
-                try:
-                    df = pd.read_sql(text(f'SELECT * FROM "{table_variant}" LIMIT 10000'), conn)
-                    df["Source_Sheet"] = s
-                    dfs.append(df)
-                    break
-                except Exception:
-                    continue
+            df = safe_select(conn, s)
+            if isinstance(df, pd.DataFrame):
+                df["Source_Sheet"] = s
+                dfs.append(df)
     df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
     try:
         cache_set(cache_key, df_all.to_json(orient="split"), expire=300)
@@ -161,54 +171,62 @@ def load_all_sheets():
 # ---------------- LOGIN ----------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
-        if username in USERS and USERS[username] == password:
-            session["username"] = username
-            return redirect(url_for("index"))
-        else:
-            return Response(
-                "<h3>Login Failed. Invalid username or password.</h3>"
-                '<a href="/login">Try again</a>', mimetype="text/html"
-            )
-    login_html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Login - AgroVista</title>
-        <style>
-            body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
-            .login-box { background: white; padding: 40px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); width: 300px; text-align: center; }
-            input { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #ccc; }
-            button { padding: 10px 20px; width: 100%; border: none; border-radius: 5px; background: #4CAF50; color: white; cursor: pointer; }
-            button:hover { background: #388e3c; }
-        </style>
-    </head>
-    <body>
-        <div class="login-box">
-            <h2>Login</h2>
-            <form method="POST">
-                <input type="text" name="username" placeholder="Username" required>
-                <input type="password" name="password" placeholder="Password" required>
-                <button type="submit">Login</button>
-            </form>
-        </div>
-    </body>
-    </html>
-    """
-    return Response(login_html, mimetype="text/html")
+    try:
+        if request.method == "POST":
+            username = request.form.get("username")
+            password = request.form.get("password")
+            if username in USERS and USERS[username] == password:
+                session["username"] = username
+                return redirect(url_for("index"))
+            else:
+                return Response(
+                    "<h3>Login Failed. Invalid username or password.</h3>"
+                    '<a href="/login">Try again</a>', mimetype="text/html"
+                )
+        # LOGIN PAGE HTML WITH LOGOUT BUTTON
+        login_html = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>Login - AgroVista</title>
+            <style>
+                body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .login-box { background: white; padding: 40px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); width: 300px; text-align: center; }
+                input { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #ccc; }
+                button { padding: 10px 20px; width: 100%; border: none; border-radius: 5px; background: #4CAF50; color: white; cursor: pointer; }
+                button:hover { background: #388e3c; }
+                .logout-btn { margin-top: 10px; background: #f44336; }
+                .logout-btn:hover { background: #d32f2f; }
+            </style>
+        </head>
+        <body>
+            <div class="login-box">
+                <h2>Login</h2>
+                <form method="POST">
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <button type="submit">Login</button>
+                </form>
+            </div>
+        </body>
+        </html>
+        """
+        return Response(login_html, mimetype="text/html")
+    except Exception as e:
+        return jsonify({"error": f"Failed to load login page: {str(e)}"}), 500
 
+# ---------------- LOGOUT ----------------
 @app.route("/logout")
 def logout():
-    session.clear()
+    session.pop("username", None)
     return redirect(url_for("login"))
 
-# ---------------- MAIN DASHBOARD ----------------
+# ---------------- INDEX (protected) ----------------
 @app.route("/")
 @require_login
 def index():
+    # MAIN UI/UX PAGE HTML
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -227,13 +245,14 @@ def index():
             #answer {{ margin-top: 30px; font-weight: bold; font-size: 1.1em; color: #1b5e20; line-height: 1.6em; }}
             #chart {{ margin-top: 30px; }}
             footer {{ text-align: center; padding: 15px; margin-top: 50px; color: #555; border-top: 1px solid #ddd; }}
+            .logout-link {{ display:block; margin-top:15px; color:#f44336; text-decoration:none; font-weight:bold; }}
             @media (max-width: 600px) {{ header h1 {{ font-size: 1.8em; }} button {{ width: 100%; }} input#q {{ width: 100%; }} }}
         </style>
     </head>
     <body>
         <header>
             <h1>AgroVista Forecast Intelligence</h1>
-            <p>Welcome, {session.get('username')} | <a href="/logout" style="color:#ffcccb;">Logout</a></p>
+            <p>Welcome, {session.get('username')}</p>
         </header>
         <main>
             <div class="input-area">
@@ -245,6 +264,7 @@ def index():
             </div>
             <div id="answer"></div>
             <div id="chart"></div>
+            <a href="/logout" class="logout-link">Logout</a>
         </main>
         <footer>© 2025 FMAFS | AgroVista AI Platform</footer>
 
@@ -256,12 +276,20 @@ def index():
         async function ask(){{
             const q = document.getElementById('q').value;
             if (!q) {{ document.getElementById('answer').innerText = "Please type a question first."; return; }}
-            const res = await fetch('/ask', {{ method:"POST", headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{question:q}}) }});
-            const data = await res.json();
-            lastAnswer = data.answer;
-            document.getElementById('answer').innerText = data.answer;
-            if (data.chart) {{
-                document.getElementById('chart').innerHTML = '<img src="data:image/png;base64,' + data.chart + '">';
+            try {{
+                const res = await fetch('/ask', {{
+                    method:"POST",
+                    headers:{{'Content-Type':'application/json'}},
+                    body: JSON.stringify({{question:q}})
+                }});
+                const data = await res.json();
+                lastAnswer = data.answer;
+                document.getElementById('answer').innerText = data.answer;
+                if (data.chart) {{
+                    document.getElementById('chart').innerHTML = '<img src="data:image/png;base64,' + data.chart + '">';
+                }}
+            }} catch(err) {{
+                document.getElementById('answer').innerText = "Error querying forecast.";
             }}
         }}
 
@@ -293,7 +321,10 @@ def index():
 
         function openDashboard(){{
             const url = "{LOOKER_URL or '#'}";
-            if(url === '#'){{ alert("Looker dashboard link not set."); return; }}
+            if(url === '#'){{
+                alert("Looker dashboard link is not set.");
+                return;
+            }}
             window.open(url, "_blank");
         }}
         </script>
@@ -304,7 +335,7 @@ def index():
 
 # ---------------- ASK ----------------
 @app.route("/ask", methods=["POST"])
-@require_api_key
+@require_login
 def ask():
     ip = request.remote_addr or "unknown"
     if not check_rate_limit(ip):
@@ -316,6 +347,7 @@ def ask():
         df = load_all_sheets()
         if df.empty:
             return jsonify({"answer": "No forecast data available.", "db_connected": bool(engine)})
+
         chart_b64 = None
         try:
             df_sample = df.groupby("Source_Sheet").head(3).reset_index(drop=True)
@@ -333,20 +365,44 @@ def ask():
             chart_b64 = base64.b64encode(buf.read()).decode("utf-8")
         except Exception:
             chart_b64 = None
+
         answer = "No response generated."
         if GENAI_API_KEY:
             try:
                 model = genai.GenerativeModel("models/gemini-2.0-flash")
-                resp = model.generate_content(q)
+                prompt_text = f"You are an agricultural AI analyst. Data preview: {df.head(5).to_dict()} \nQuery: {q}"
+                resp = model.generate_content(prompt_text)
                 answer = resp.text or answer
             except Exception:
                 answer = "AI temporarily unavailable; here's a local summary."
         else:
             answer = f"GENAI_API_KEY not set; rows: {len(df)}"
+
         return jsonify({"answer": answer, "chart": chart_b64})
+
     except Exception as e:
         logger.exception("Error in /ask: %s", e)
         return jsonify({"answer": f"Server error: {str(e)}"}), 500
+
+# ---------------- HEALTH ----------------
+@app.route("/healthz")
+def healthz():
+    status = {"ok": True, "db": None}
+    try:
+        if engine:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            status["db"] = True
+    except Exception as e:
+        status["db"] = False
+        status["ok"] = False
+        status["error"] = str(e)
+    return jsonify(status)
+
+@app.route("/readyz")
+def readyz():
+    ready = {"ready": True, "genai": bool(GENAI_API_KEY)}
+    return jsonify(ready)
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
