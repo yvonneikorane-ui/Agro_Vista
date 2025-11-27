@@ -1,6 +1,7 @@
+# app.py — Rewritten with safe DB fallback + append upload endpoint
 import os
 import pandas as pd
-from flask import Flask, request, jsonify, Response, abort
+from flask import Flask, request, jsonify, Response
 from sqlalchemy import create_engine, text
 import google.generativeai as genai
 import plotly.express as px
@@ -10,34 +11,42 @@ from functools import wraps
 from time import time
 
 # ---------------- Config ----------------
-# Use the Railway env var if set, otherwise fall back to the public URL you tested in Colab
-DATABASE_URL =  os.getenv("DATABASE_URL")
+# Priority:
+# 1) DATABASE_URL (env) - typical Railway var used by apps inside Railway (may be internal)
+# 2) DATABASE_PUBLIC_URL (env) - public reachable URL (use this in Colab / external scripts)
+# 3) FALLBACK_PUBLIC_URL - the known public URL you tested (used only if envs missing)
+FALLBACK_PUBLIC_URL = "postgresql://postgres:DcYufJdqrTmSmAhRqRPgIAtODXcZHTqp@maglev.proxy.rlwy.net:34809/railway"
 
-# Fix: clean GENAI key line (removed stray words)
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PUBLIC_URL") or FALLBACK_PUBLIC_URL
+
+# Gemini / Google GenAI
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
-SHEET_ID = os.getenv("SHEET_ID")  # Optional Google Sheets fallback
-LOOKER_URL = os.getenv("LOOKER_URL")  # Looker dashboard link
-REDIS_URL = os.getenv("REDIS_URL")  # Optional Redis for caching (e.g. redis://...)
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")  # Optional header-based protection for sensitive endpoints
+SHEET_ID = os.getenv("SHEET_ID")
+LOOKER_URL = os.getenv("LOOKER_URL")
+REDIS_URL = os.getenv("REDIS_URL")
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "512"))
 
-# ---------------- Additional Production Dependencies & Setup ----------------
-# Configure Gemini client safely
+# ---------------- Setup ----------------
+# Configure Gemini client safely (best-effort)
 if GENAI_API_KEY:
     try:
         genai.configure(api_key=GENAI_API_KEY)
     except Exception:
-        # if gemini lib behaves differently, ignore at start and call later when needed
         logging.getLogger("agrovista").warning("Could not configure genai at startup")
 
-# SQLAlchemy engine
-engine = create_engine(DATABASE_URL) if DATABASE_URL else None
+# Create SQLAlchemy engine
+engine = None
+try:
+    engine = create_engine(DATABASE_URL)
+except Exception as e:
+    logging.getLogger("agrovista").exception("Failed to create DB engine: %s", e)
 
 # Basic logging
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("agrovista")
 
-# Optional simple in-memory cache as fallback (or Redis)
+# Redis optional cache
 try:
     if REDIS_URL:
         import redis
@@ -48,14 +57,14 @@ except Exception as e:
     logger.warning("Redis not available: %s", e)
     redis_client = None
 
-# Simple decorator for optional API key protection on endpoints
+# Simple API key decorator
 def require_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if ADMIN_API_KEY:
             key = request.headers.get("x-api-key") or request.args.get("api_key")
             if not key or key != ADMIN_API_KEY:
-                logger.warning("Unauthorized access attempt")
+                logger.warning("Unauthorized access attempt to protected endpoint")
                 return jsonify({"error": "unauthorized"}), 401
         return f(*args, **kwargs)
     return decorated
@@ -80,6 +89,7 @@ sheet_names = [
     "Input_Pest_Disease_Alert_Forecast"
 ]
 
+# ---------------- Simple cache helpers ----------------
 def cache_get(key):
     try:
         if redis_client:
@@ -98,10 +108,10 @@ def cache_set(key, value, expire=300):
 # ---------------- Robust loader: try multiple table-name variants ----------------
 def load_all_sheets():
     """
-    Load all forecasts from Postgres (robust to table-name differences).
-    Returns a single DataFrame with a column Source_Sheet to match your UI.
+    Load all forecasts from Postgres. Tries multiple candidate naming variants
+    **without renaming tables**. Returns DataFrame with column Source_Sheet.
     """
-    cache_key = "agrovista:all_sheets_v1"
+    cache_key = "agrovista:all_sheets_v2"
     cached = cache_get(cache_key)
     if cached:
         try:
@@ -115,59 +125,57 @@ def load_all_sheets():
         return pd.DataFrame()
 
     dfs = []
-    # helper to try multiple name forms
-    def try_table_read(conn, candidate):
-        try:
-            # Use a safe SQL call; candidate is a trusted constant from code
-            q = text(f"SELECT * FROM {candidate} LIMIT 10000")
-            df = pd.read_sql(q, conn)
-            return df
-        except Exception as e:
-            # logger.debug(f"read table {candidate} failed: {e}")
-            return None
+
+    def safe_select(conn, candidate):
+        """
+        Try a few SELECT forms for a candidate table name:
+        1) quoted candidate (preserves case)
+        2) quoted lower candidate
+        3) unquoted lower candidate
+        Returns DataFrame or None
+        """
+        try_variants = []
+        # quoted original (handles tables created with mixed-case or uppercase names)
+        try_variants.append(f'SELECT * FROM "{candidate}" LIMIT 10000')
+        # quoted lower
+        try_variants.append(f'SELECT * FROM "{candidate.lower()}" LIMIT 10000')
+        # unquoted lower (standard practice)
+        try_variants.append(f'SELECT * FROM {candidate.lower()} LIMIT 10000')
+
+        for q in try_variants:
+            try:
+                df = pd.read_sql(text(q), conn)
+                return df
+            except Exception:
+                continue
+        return None
 
     with engine.connect() as conn:
         for s in sheet_names:
-            # generate candidates in order of likeliness
+            # generate candidate strings to try (do NOT mutate names permanently)
             cand_list = []
-            # exact as-is
-            cand_list.append(s)
-            # lowercase
-            cand_list.append(s.lower())
-            # remove _forecast suffix if present
+            cand_list.append(s)                     # original
+            cand_list.append(s.lower())             # lowercase
             if s.lower().endswith("_forecast"):
-                cand_list.append(s.lower().replace("_forecast", ""))
-            # common variants: remove 'forecast' but keep original casing
+                cand_list.append(s.lower().replace("_forecast", ""))  # drop suffix
             if s.endswith("_forecast"):
-                cand_list.append(s.replace("_forecast", ""))
-            # try snake-case / lower underscores
+                cand_list.append(s.replace("_forecast", ""))         # drop suffix keep casing
             cand_list.append(s.replace(" ", "_").lower())
-            # remove any double underscores
-            cand_list = list(dict.fromkeys([c for c in cand_list if c]))  # unique preserve order
+            # unique preserve order
+            cand_list = list(dict.fromkeys([c for c in cand_list if c]))
 
             found = False
             for cand in cand_list:
-                # Some DBs have table names without schema quoting; try raw candidate
-                df = None
-                try:
-                    # Use read_sql_table when table exists; but to be robust we'll run SELECT
-                    df = try_table_read(conn, cand)
-                except Exception:
-                    df = None
-                if isinstance(df, pd.DataFrame) and not df.empty:
-                    df["Source_Sheet"] = s  # keep the original display name for frontend grouping
-                    dfs.append(df)
-                    found = True
-                    break
-                elif isinstance(df, pd.DataFrame) and df.empty:
-                    # if table exists but empty, still include it as empty frame with Source_Sheet
+                df = safe_select(conn, cand)
+                # df could be None or DataFrame
+                if isinstance(df, pd.DataFrame):
+                    # attach Source_Sheet as the display label
                     df["Source_Sheet"] = s
                     dfs.append(df)
                     found = True
                     break
             if not found:
                 logger.debug("No table found for display name %s; tried: %s", s, cand_list)
-                # continue silently (frontend will handle missing sheets)
 
     df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
     try:
@@ -192,7 +200,7 @@ def check_rate_limit(ip):
         rate_store.clear()
     return True
 
-# ---------------- Routes (your UI preserved) ----------------
+# ---------------- Routes (UI preserved exactly) ----------------
 @app.route("/")
 def index():
     html_content = f"""
@@ -297,15 +305,15 @@ def index():
     """
     return Response(html_content, mimetype="text/html")
 
-# Health check and readiness endpoints
+# Health and readiness endpoints
 @app.route("/healthz")
 def healthz():
-    status = {"ok": True}
+    status = {"ok": True, "db": None}
     try:
         if engine:
-            # cheap DB check
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
+            status["db"] = True
     except Exception as e:
         logger.exception("DB healthcheck failed")
         status["db"] = False
@@ -319,7 +327,57 @@ def readyz():
     return jsonify(ready)
 
 # ============================
-# BACKEND FORECAST ENDPOINT
+# ADMIN CSV UPLOAD (APPEND mode)
+# ============================
+@app.route("/upload_csv", methods=["POST"])
+@require_api_key
+def upload_csv():
+    """
+    Protected endpoint to upload a CSV from a raw URL into Postgres.
+    Request JSON:
+    {
+      "csv_url": "https://raw.githubusercontent.com/..../file.csv",
+      "table_name": "Exact_Table_Name_In_Postgres"  # keep exact if you care about casing
+    }
+    Behavior: APPEND rows to the table; if table doesn't exist it will be created.
+    """
+    try:
+        payload = request.get_json(force=True)
+        csv_url = payload.get("csv_url")
+        table_name = payload.get("table_name")
+        if not csv_url or not table_name:
+            return jsonify({"error": "csv_url and table_name are required"}), 400
+
+        # Download CSV
+        try:
+            df = pd.read_csv(csv_url)
+        except Exception as e:
+            logger.exception("Failed to read CSV from %s: %s", csv_url, e)
+            return jsonify({"error": f"Failed to read CSV: {str(e)}"}), 400
+
+        # Clean column names to be stable but do not change table_name
+        df.columns = (
+            df.columns.str.strip()
+            .str.lower()
+            .str.replace(" ", "_")
+            .str.replace("-", "_")
+        )
+
+        # Append to DB using to_sql (if table doesn't exist it will be created)
+        try:
+            # Using if_exists='append' per your choice B
+            df.to_sql(table_name, engine, if_exists="append", index=False)
+        except Exception as e:
+            logger.exception("Failed to write to table %s: %s", table_name, e)
+            return jsonify({"error": f"DB write failed: {str(e)}"}), 500
+
+        return jsonify({"ok": True, "rows": len(df), "table": table_name})
+    except Exception as e:
+        logger.exception("upload_csv server error: %s", e)
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+# ============================
+# BACKEND FORECAST ENDPOINT (/ask)
 # ============================
 @app.route("/ask", methods=["POST"])
 @require_api_key
@@ -333,26 +391,33 @@ def ask():
         if not q:
             return jsonify({"answer": "Please ask a question."})
 
-        # load_all_sheets returns a DataFrame (with Source_Sheet column)
         df = load_all_sheets()
         if df.empty:
-            # helpful debug info to return — change to a production message if preferred
-            return jsonify({"answer": "No forecast data available. (DB connected: %s)" % bool(engine)})
+            # Provide helpful debug info to aid diagnosis
+            # Do NOT expose sensitive details in production; here it's helpful for debugging
+            tables_list = []
+            try:
+                with engine.connect() as conn:
+                    res = conn.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema='public'"))
+                    tables_list = [r[0] for r in res.fetchall()]
+            except Exception:
+                tables_list = []
+            return jsonify({
+                "answer": "No forecast data available. (DB connected: %s)" % bool(engine),
+                "db_tables": tables_list
+            })
 
-        # Multi-sheet chart visualization
+        # Build chart image (sample rows per sheet)
         chart_b64 = None
         try:
-            # ensure Source_Sheet exists
             if "Source_Sheet" not in df.columns:
                 df["Source_Sheet"] = "unknown"
             df_sample = df.groupby("Source_Sheet").head(3).reset_index(drop=True)
-            # Ensure there is at least one numeric column for plotting; try to find one
             numeric_cols = df_sample.select_dtypes(include=["number"]).columns.tolist()
             if numeric_cols:
                 y_col = numeric_cols[0]
                 fig = px.line(df_sample, x=df_sample.index, y=y_col, title="AgroVista Multi-Sheet Forecast Overview", color="Source_Sheet")
             else:
-                # fallback: count per Source_Sheet
                 counts = df_sample["Source_Sheet"].value_counts().reset_index()
                 counts.columns = ["Source_Sheet", "count"]
                 fig = px.bar(counts, x="Source_Sheet", y="count", title="Rows per Source_Sheet")
@@ -364,17 +429,16 @@ def ask():
             logger.exception("chart generation failed: %s", e)
             chart_b64 = None
 
-        # Combine summaries of all sheets (safe)
+        # Sheet summary
         sheet_summary = ""
         for s in sheet_names:
             subset = df[df["Source_Sheet"] == s]
             if subset.empty:
                 sheet_summary += f"\n--- {s} ---\n(No rows)\n"
             else:
-                # limit to 5 rows for brevity
                 sheet_summary += f"\n--- {s} ---\n{subset.head(5).to_dict(orient='records')}\n"
 
-        # Gemini prompt
+        # Gemini prompt and response
         prompt_text = f"""
         You are an agricultural AI analyst for the Nigerian Ministry of Agriculture.
         Here are combined forecast extracts from the national datasets:
@@ -407,7 +471,6 @@ def ask():
 
 # ---------------- Run ----------------
 if __name__ == "__main__":
-    # expose for gunicorn to use as `app:gunicorn_app`
     gunicorn_app = app
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
