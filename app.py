@@ -231,18 +231,6 @@ def index():
     html_content = f"<h2>Welcome {session.get('username')}</h2><p>AgroVista Forecast Dashboard</p>"
     return Response(html_content, mimetype="text/html")
 
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-# INSERTED HERE — Admin + User dashboard routes
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-@app.route("/admin_dashboard")
-def admin_dashboard():
-    return index()
-
-@app.route("/user_dashboard")
-def user_dashboard():
-    return index()
-
 # ---------------- HEALTH ----------------
 @app.route("/healthz")
 def healthz():
@@ -280,6 +268,14 @@ def upload_csv():
     except Exception as e:
         logger.exception("upload_csv failed: %s", e)
         return jsonify({"error": str(e)}), 500
+
+@app.route("/admin_dashboard")
+def admin_dashboard():
+    return index()
+
+@app.route("/user_dashboard")
+def user_dashboard():
+    return index()
 
 # ---------------- ASK ENDPOINT ----------------
 @app.route("/ask", methods=["POST"])
