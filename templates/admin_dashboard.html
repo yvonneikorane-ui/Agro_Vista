@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header>
+    <h1>Admin Dashboard</h1>
+    <button onclick="logout()">Logout</button>
+</header>
+<main>
+    <h2>Upload CSV to Postgres</h2>
+    <input type="text" id="csvUrl" placeholder="CSV URL">
+    <input type="text" id="tableName" placeholder="Table Name">
+    <button onclick="uploadCsv()">Upload</button>
+    <div id="uploadResult"></div>
+</main>
+<script src="{{ url_for('static', filename='js/login.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
