@@ -198,6 +198,7 @@ def login():
                 button:hover { background: #388e3c; }
                 .logout-btn { margin-top: 10px; background: #f44336; }
                 .logout-btn:hover { background: #d32f2f; }
+                .form {background-image: url("https://borgenproject.org/wp-content/uploads/GMOs_opt.jpg");}
             </style>
         </head>
         <body>
