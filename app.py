@@ -62,8 +62,8 @@ if GENAI_API_KEY:
 
 # ---------------- USERS ----------------
 USERS = {
-    "admin": "1234",  # fixed admin password
-    "user1": "userpass"
+    os.getenv("ADMIN_USERNAME", "admin"): os.getenv("ADMIN_PASSWORD", ""),
+    os.getenv("USER1_USERNAME", "user1"): os.getenv("USER1_PASSWORD", "")
 }
 
 # ---------------- HELPERS ----------------
